@@ -1,0 +1,8 @@
+.DS_Store
+*.log
+.mcpb-cache/
+.claude-plugin/types/
+.collab/
+node_modules/
+__pycache__/
+*.pyc

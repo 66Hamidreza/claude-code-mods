@@ -1,0 +1,29 @@
+{
+  "name": "claude-code-mods",
+  "owner": {
+    "name": "66Hamidreza"
+  },
+  "plugins": [
+    {
+      "name": "project-status",
+      "source": "./project-status",
+      "description": "Project progress, next task, Git state, and configurable sync prompts above the prompt"
+    },
+    {
+      "name": "session-chat",
+      "source": "./session-chat",
+      "description": "Sessions on this machine find each other and talk: inbox band, /msg, /all, peers tool for the model"
+    },
+    {
+      "name": "agent-board",
+      "source": "./agent-board",
+      "description": "Live view of every agent, subagent and Codex job: terminal pane plus a local web board"
+    },
+    {
+      "name": "prompt-router",
+      "source": "./prompt-router",
+      "description": "Routes each prompt to haiku, sonnet, opus or Codex by rules plus a haiku classifier; !model prefix overrides"
+    }
+  ],
+  "description": "Independent Claude Code function-hook plugins for project status, local coordination, agent visibility, and prompt routing"
+}

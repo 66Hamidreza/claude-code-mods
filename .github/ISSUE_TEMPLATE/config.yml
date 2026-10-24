@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Private security report / گزارش امنیتی خصوصی
+    url: https://github.com/66Hamidreza/claude-code-mods/security/advisories/new
+    about: Report vulnerabilities privately; do not open a public issue. آسیب‌پذیری را عمومی گزارش نکنید.

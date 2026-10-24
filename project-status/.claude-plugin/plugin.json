@@ -1,0 +1,1 @@
+{ "name": "project-status", "version": "0.1.0", "description": "Pane showing STATUS.md progress, next task and git state of every project", "types": "./types/index.d.ts" }

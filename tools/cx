@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+# cx: hand a task to Codex in the current git repo. Every run belongs to one Claude session.
+# usage: cx [-r] [-p] [-c "check cmd"] -t a,b        specs in .collab/<session>/tasks/ (one batched run)
+#        cx [-r] [-p] [-c "check cmd"] "<prompt>"    ad-hoc prompt, no spec file
+#        cx -s -t a                                  resume the Codex thread that last ran task a
+#        -m <model> -e <effort> select Codex model and reasoning effort
+#        -r read-only (no commit); -n local commit only (default)
+#        -p push after commit (Claude only, after review)
+# Requires Bash, git, Python 3, flock, and an authenticated Codex CLI.
+# CLAUDE_CODE_SESSION_ID identifies the owner; no machine-specific setup is required.
+# CX_MODELS overrides the space-separated model allowlist below.
+set -uo pipefail
+RO=0; NOPUSH=1; CHECK=""; TASK=""; RESUME=0; MODEL=""; EFFORT=""
+while getopts "rnpc:t:sm:e:" o; do case $o in r) RO=1;; n) NOPUSH=1;; p) NOPUSH=0;; c) CHECK="$OPTARG";; t) TASK="$OPTARG";; s) RESUME=1;; m) MODEL="$OPTARG";; e) EFFORT="$OPTARG";; *) exit 2;; esac; done
+shift $((OPTIND-1))
+DEFAULT_MODELS="gpt-6.1-sol gpt-6-astra gpt-6-sol gpt-6-luna gpt-5.6-sol gpt-5.6-terra gpt-5.6-luna"
+read -ra ALLOWED_MODELS <<< "${CX_MODELS:-$DEFAULT_MODELS}"
+if [ -n "$MODEL" ]; then
+  MODEL_OK=0
+  for allowed in "${ALLOWED_MODELS[@]}"; do
+    [ "$MODEL" = "$allowed" ] && MODEL_OK=1
+  done
+  [ "$MODEL_OK" = 1 ] || { echo "cx: unknown model (configure CX_MODELS to allow it)" >&2; exit 2; }
+fi
+case "$EFFORT" in
+  ""|low|medium|high|xhigh|max) ;;
+  *) echo "cx: unknown effort" >&2; exit 2;;
+esac
+MODELARGS=()
+[ -n "$MODEL" ] && MODELARGS+=(-m "$MODEL")
+[ -n "$EFFORT" ] && MODELARGS+=(-c "model_reasoning_effort=$EFFORT")
+
+SID="${CLAUDE_CODE_SESSION_ID:-}"
+[ -n "$SID" ] || { echo "cx: CLAUDE_CODE_SESSION_ID not set; run cx from Claude Code's Bash tool"; exit 2; }
+[[ "$SID" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "cx: bad session id"; exit 2; }
+ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "cx: not a git repo"; exit 2; }
+cd "$ROOT"
+BASE=".collab/$SID"
+grep -qxF '.collab/' .git/info/exclude 2>/dev/null || echo '.collab/' >> .git/info/exclude
+RUN=$(python3 -c 'import uuid; print(uuid.uuid4().hex[:12])')
+echo "cx-run: $RUN"
+
+NAMES=()
+if [ -n "$TASK" ]; then
+  IFS=',' read -ra NAMES <<< "$TASK"
+  for n in "${NAMES[@]}"; do
+    [[ "$n" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "cx: bad task name: $n"; exit 2; }
+    [ -f "$BASE/tasks/$n.md" ] || { echo "cx: missing spec $ROOT/$BASE/tasks/$n.md"; exit 2; }
+  done
+fi
+if [ $RESUME = 1 ] && [ "${#NAMES[@]}" -ne 1 ]; then echo "cx: -s needs exactly one task: cx -s -t name"; exit 2; fi
+
+if [ -n "$TASK" ]; then
+  mkdir -p "$BASE/tasks" "$BASE/results" "$BASE/threads" "$BASE/runs/$RUN"
+  SPECS=""; for n in "${NAMES[@]}"; do SPECS="$SPECS $BASE/tasks/$n.md"; done
+  LABEL="$TASK"
+  PROMPT="Read AGENTS.md rules, then execute task spec(s):$SPECS. Do NOT ask questions: pick the sensible option and record it under Assumptions. For each spec write $BASE/results/<name>.md, max 15 lines: Changed / Files / Assumptions / Blockers / Check result. Final reply: one line per task."
+  [ $RO = 1 ] && PROMPT="$PROMPT NOTE: sandbox is read-only, do NOT write files; put the full result in your final reply instead."
+else
+  LABEL="-"
+  PROMPT="${1:?prompt or -t required}"
+fi
+FULL="CX_RUN_V1 owner=$SID run=$RUN task=$LABEL"$'\n'"$PROMPT"
+printf '{"owner":"%s","run":"%s","task":"%s","root":"%s"}\n' "$SID" "$RUN" "$LABEL" "$ROOT" > "$BASE/runs/$RUN/manifest.json" 2>/dev/null
+
+SANDBOX=workspace-write; [ $RO = 1 ] && SANDBOX=read-only
+
+# Thread id of this run: the rollout whose user text holds this run id; its first line has payload.id.
+thread_of_run() {
+  local f
+  f=$(grep -rl --include='rollout-*.jsonl' -F "run=$1" "$HOME/.codex/sessions" 2>/dev/null | head -1)
+  [ -n "$f" ] && head -1 "$f" | python3 -c 'import json,sys; print(json.load(sys.stdin)["payload"]["id"])' 2>/dev/null
+}
+
+# Write runs: one per repo at a time, so two sessions never edit the same checkout together.
+if [ $RO = 0 ]; then
+  exec 9>"$ROOT/.git/cx.lock"
+  flock -w 1800 9 || { echo "cx: another cx write run holds the repo lock"; exit 6; }
+fi
+
+snap() {  # "hash path" for every dirty file, so only files this run changed get committed
+  git status --porcelain -uall | sed -E 's/^...//; s/^"(.*)"$/\1/; s/.* -> //' | sed '/^$/d' | while IFS= read -r f; do
+    printf '%s %s\n' "$(git hash-object -- "$f" 2>/dev/null || echo gone)" "$f"
+  done | sort
+}
+
+BEFORE=$(snap)
+if [ $RESUME = 1 ]; then
+  TID=$(cat "$BASE/threads/${NAMES[0]}.id" 2>/dev/null) || { echo "cx: no thread for ${NAMES[0]}; run it once without -s first"; exit 2; }
+  [ -n "$TID" ] || { echo "cx: empty thread id for ${NAMES[0]}"; exit 2; }
+  ROUT=(); [ $RO = 1 ] && ROUT=(-o "$BASE/results/${NAMES[0]}.md")
+  codex exec resume "${MODELARGS[@]}" --skip-git-repo-check -c sandbox_mode=\"$SANDBOX\" "${ROUT[@]}" "$TID" "$FULL" < /dev/null
+  RC=$?
+else
+  OUT=(); if [ $RO = 1 ] && [ -n "$TASK" ]; then OUT=(-o "$BASE/results/$(echo "$TASK" | tr ',' '-').md"); fi
+  codex exec "${MODELARGS[@]}" --skip-git-repo-check -s "$SANDBOX" "${OUT[@]}" "$FULL" < /dev/null
+  RC=$?
+fi
+if [ -n "$TASK" ]; then
+  TID=$(thread_of_run "$RUN")
+  [ -n "$TID" ] && for n in "${NAMES[@]}"; do echo "$TID" > "$BASE/threads/$n.id"; done
+fi
+[ $RC = 0 ] || { echo "cx: codex exited $RC; nothing committed (partial edits, if any, stay in the working tree)"; exit $RC; }
+[ $RO = 1 ] && exit 0
+
+AFTER=$(snap)
+FILES=$(comm -13 <(echo "$BEFORE") <(echo "$AFTER") | cut -d' ' -f2- | sed '/^$/d')
+[ -n "$FILES" ] || { echo "cx: codex changed nothing"; exit 0; }
+BAD=$(echo "$FILES" | grep -E '(^|/)(\.env[^/]*|[^/]*\.key|[^/]*\.pem|[^/]*token[^/]*|auth\.json|id_rsa[^/]*)$' || true)
+[ -z "$BAD" ] || { echo "cx: refusing, secret-like files changed:"; echo "$BAD"; exit 3; }
+CRED='(api[_-]?key|secret|password|bearer )[^\n]{0,20}[:=]\s*["'\'']?[A-Za-z0-9_\-]{20,}'
+HIT=""; while IFS= read -r f; do grep -qiE "$CRED" -- "$f" 2>/dev/null && HIT="$HIT $f"; done <<< "$FILES"
+[ -z "$HIT" ] || { echo "cx: refusing, changed files look like they contain a credential:$HIT"; exit 3; }
+if [ -n "$CHECK" ]; then bash -c "$CHECK" || { echo "cx: check failed, nothing committed (files left in working tree)"; exit 4; }; fi
+
+mapfile -t PATHS <<< "$FILES"; git add -- "${PATHS[@]}"
+SUBJ=$(echo "codex: $LABEL" | head -1 | cut -c1-60)
+mapfile -t PATHS <<< "$FILES"
+git commit -q -m "$SUBJ" -m "Delegated to Codex via cx (run $RUN). Review by Claude follows." -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" -- "${PATHS[@]}" || { echo "cx: commit failed"; exit 5; }
+HASH=$(git rev-parse --short HEAD)
+if [ $NOPUSH = 0 ] && git remote | grep -q .; then
+  git pull -q --rebase 2>&1 | tail -1; git push -q 2>&1 | tail -1
+fi
+echo "cx: committed $HASH ($(echo "$FILES" | wc -l) files)"; git diff --stat HEAD~1 | tail -3

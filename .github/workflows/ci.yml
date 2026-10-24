@@ -1,0 +1,49 @@
+name: CI
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.3.14'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test all mods and embedded scanner
+        run: python3 .github/scripts/test.py
+  shell:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ShellCheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      - run: bash -n tools/cx
+      - run: shellcheck --severity=error tools/cx
+  metadata:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Parse plugin manifests and release notes
+        run: |
+          python3 - <<'PY'
+          import json, pathlib
+          for path in [pathlib.Path('.claude-plugin/marketplace.json'), *pathlib.Path('.').glob('*/.claude-plugin/plugin.json'), *pathlib.Path('.').glob('*/hooks/hooks.json')]:
+              json.loads(path.read_text())
+          PY
+          python3 .github/scripts/release-notes.py 0.1.0 > /dev/null

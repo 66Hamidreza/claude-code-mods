@@ -1,0 +1,1 @@
+{ "name": "prompt-router", "version": "0.1.0", "description": "Routes each prompt to haiku, sonnet, opus or Codex by rules plus a haiku classifier; !model prefix overrides", "types": "./types/index.d.ts" }

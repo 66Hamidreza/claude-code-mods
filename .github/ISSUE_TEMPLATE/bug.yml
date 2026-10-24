@@ -1,0 +1,46 @@
+name: Bug report / گزارش باگ
+description: Report reproducible behavior / گزارش خطای قابل تکرار
+title: '[Bug] '
+body:
+  - type: markdown
+    attributes:
+      value: 'For vulnerabilities use private security advisories. برای آسیب‌پذیری از گزارش خصوصی امنیتی استفاده کنید.'
+  - type: dropdown
+    id: mod
+    attributes:
+      label: Component / بخش
+      options:
+        - project-status
+        - session-chat
+        - agent-board
+        - prompt-router
+        - tools/cx
+        - Documentation or CI / مستندات یا CI
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions and OS / نسخه‌ها و سیستم‌عامل
+      description: Claude Code, mod, OS; Bun/Python if relevant. نسخهٔ میزبان و افزونه را بنویسید.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce / مراحل بازتولید
+      description: Include minimal commands and sanitized configuration. دستورهای حداقلی و تنظیمات پاک‌سازی‌شده را بنویسید.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected and actual behavior / رفتار مورد انتظار و واقعی
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitized logs / لاگ پاک‌سازی‌شده
+      description: Remove credentials, personal paths and private project names. اطلاعات محرمانه و نام پروژه‌های خصوصی را حذف کنید.
+      render: text

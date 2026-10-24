@@ -1,0 +1,20 @@
+name: Feature request / پیشنهاد قابلیت
+description: Propose a focused improvement / پیشنهاد بهبود مشخص
+title: '[Feature] '
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem and affected component / مسئله و بخش مربوط
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed behavior / رفتار پیشنهادی
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives and limits / جایگزین‌ها و محدودیت‌ها
