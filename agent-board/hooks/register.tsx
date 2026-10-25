@@ -180,7 +180,7 @@ const syncPeers = async ($: EngineInterface, at: number) => {
   )
   const snapshots = (
     await Promise.all(entries.map(entry => $.fs.read(`${dir}/${entry.name}`).then(text => JSON.parse(text) as Snapshot).catch(() => undefined)))
-  ).filter((one): one is Snapshot => one !== undefined && Array.isArray(one.agents))
+  ).filter((one): one is Snapshot => one !== undefined && Array.isArray(one.agents) && !isHelperCwd(one.cwd ?? ''))
 
   const adviceEntries = await Promise.all(snapshots.map(async one => {
     const advice = await readAdvice($, one.sessionId, at)
@@ -222,8 +222,14 @@ const sessionTitle = async ($: EngineInterface, cwd: string, at: number) => {
   return title
 }
 
+// Helper sessions (the remember plugin's summarizer) are not user work.
+function isHelperCwd(cwd: string) {
+  return cwd.startsWith('/tmp/remember-summarizer-cwd')
+}
+
 const writeSnapshot = async ($: EngineInterface, at: number, isEnded = false) => {
   const cwd = await $.session.cwd()
+  if (isHelperCwd(cwd)) return
   currentAdvice = await readAdvice($, sessionId, at)
   const snapshot: Snapshot & { activity: number[]; events: BoardEvent[] } = {
     sessionId,

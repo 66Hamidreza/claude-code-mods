@@ -628,7 +628,7 @@ async function poll() {
   try {
     var listing = await (await fetch('sessions/', { cache: 'no-store' })).text();
     var files = Array.from(new Set(Array.from(listing.matchAll(/href="([^"]+\\.json)"/g)).map(function (m) { return m[1]; })));
-    all = (await Promise.all(files.map(function (f) { return fetch('sessions/' + f, { cache: 'no-store' }).then(function (r) { return r.json(); }).catch(function () { return null; }); }))).filter(Boolean);
+    all = (await Promise.all(files.map(function (f) { return fetch('sessions/' + f, { cache: 'no-store' }).then(function (r) { return r.json(); }).catch(function () { return null; }); }))).filter(function (s) { return s && !String(s.cwd || '').startsWith('/tmp/remember-summarizer-cwd'); });
     render(); notifyNew(all);
     live.classList.remove('stale'); status.textContent = 'live · ' + new Date().toLocaleTimeString();
   } catch (error) {
