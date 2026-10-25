@@ -1,9 +1,9 @@
 [Unit]
-Description=Agent board web (static, 127.0.0.1:7788)
+Description=Agent board web (static + usage.json, 127.0.0.1:7788)
 
 [Service]
 ExecStartPre=/bin/mkdir -p %h/.claude/mods-data/agent-board/web/sessions
-ExecStart=/usr/bin/python3 -m http.server 7788 --bind 127.0.0.1 --directory %h/.claude/mods-data/agent-board/web
+ExecStart=/usr/bin/python3 -I %h/.claude/mods/agent-board/server.py --port 7788
 Restart=always
 RestartSec=2
 

@@ -10,7 +10,7 @@ A public marketplace of Claude Code function-hook plugins. Each mod can be insta
 | --- | --- |
 | [project-status](project-status/README.md) | Task progress, next task, Git state, and configurable sync prompts across projects. |
 | [session-chat](session-chat/README.md) | Discover and message other local Claude Code sessions. |
-| [agent-board](agent-board/README.md) | Observe agents and Codex jobs in a terminal pane or local web board. |
+| [agent-board](agent-board/README.md) | Observe agents, T3 delegated tasks and Codex jobs in a terminal pane or local web board, with Claude/Codex usage left. |
 | [prompt-router](prompt-router/README.md) | Route prompts by rules and classification; advise on parallel work. |
 
 ## Install
@@ -37,7 +37,7 @@ In the desktop app, open **+ → Plugins → Add marketplace**, enter `66Hamidre
 
 Use a Claude Code build supporting function-hook modules (`hooks/hooks.json`), the `claude-code` engine API, and `claude-code/testing`. The local CLI inspected for this repository reports 2.1.310; a minimum supported version has not been established. Installation alone does not verify runtime API compatibility.
 
-Git is needed for project status and Codex hand-offs. Python 3 supports agent-board's web server and Codex log scanner. `tools/cx` additionally needs Bash, `flock`, standard Unix utilities, and an installed, authenticated Codex CLI. Router model IDs are fixed in [route.ts](prompt-router/hooks/route.ts); availability depends on your account. Hooks run with your user permissions.
+Git is needed for project status and Codex hand-offs. Python 3 supports agent-board's web server, usage endpoint and Codex log scanner. `tools/cx` additionally needs Bash, `flock`, standard Unix utilities, and an installed, authenticated Codex CLI. Router model IDs are fixed in [route.ts](prompt-router/hooks/route.ts); availability depends on your account. Hooks run with your user permissions.
 
 ## Development
 

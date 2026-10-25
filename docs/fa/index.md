@@ -8,7 +8,7 @@
 | --- | --- |
 | [project-status](project-status.md) | پیشرفت پروژه‌ها از STATUS.md و وضعیت گیت |
 | [session-chat](session-chat.md) | پیام‌رسانی میان نشست‌های محلی |
-| [agent-board](agent-board.md) | مشاهدهٔ عامل‌ها و کارهای Codex در ترمینال و مرورگر |
+| [agent-board](agent-board.md) | مشاهدهٔ عامل‌ها، کارهای T3 و Codex و مصرف باقی‌مانده در ترمینال و مرورگر |
 | [prompt-router](prompt-router.md) | انتخاب مدل و پیشنهاد اجرای موازی |
 
 ## نصب

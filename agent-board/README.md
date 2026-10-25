@@ -9,7 +9,7 @@ Observes the main session, subagents, workflow agents, and Codex exec runs. Show
 ## Commands
 
 - `/board`: open the pane.
-- `/board web`: start the board at `http://localhost:7788/` for all local sessions.
+- `/board web`: start the board at `http://localhost:7788/` for all local sessions (static fallback server, no usage header; see Always-on web board).
 - `/board notify on` / `/board notify off`: persist the native-notification preference; toasts remain enabled.
 - `/board clear`: remove finished non-main nodes and clear event history.
 
@@ -19,9 +19,13 @@ The pane also offers controls for finished agents and history. The web board sup
 
 No custom environment variables; `HOME` locates `~/.claude/mods-data/agent-board/web` and `~/.codex/sessions`. Polls agent state every second and writes session snapshots for the web board. Inside T3 Code, delegated children are read from `~/.t3/userdata/statev2.sqlite` (read-only, matched to the session by its provider thread id). Python 3 reads recent Codex rollout logs and serves static files bound to `127.0.0.1:7788`. Explicit `CX_RUN_V1` owner/run markers attribute delegated jobs; interactive Codex TUI sessions are excluded. Orchestration advice from prompt-router is compared with observed execution.
 
+## Usage header
+
+The top of the web page shows how much of the Claude and Codex limits is left (5-hour and weekly windows, reset countdowns) and the Codex subscription end date. `server.py` computes it on request from local files only: Claude from the `rate_limit_event` entries T3 Code logs under `~/.t3/userdata/logs/provider`, Codex from the newest rollout in `~/.codex/sessions`, and the plan dates from the Codex ID-token claims. No token is returned. Claude's renewal date is not stored locally and shows as unavailable; Claude data refreshes only while a T3 session is active, and the card shows when it was last updated.
+
 ## Always-on web board
 
-Optional: serve the board without any session open. Copy `agent-board-web.service` to `~/.config/systemd/user/`, then `systemctl --user enable --now agent-board-web`. It only serves the static files; the data still comes from the snapshots live sessions write, so ended sessions show as ended. `/board web` copes with the port already being served.
+Optional: serve the board without any session open. Copy `agent-board-web.service` to `~/.config/systemd/user/` (it runs `server.py`; adjust the path to where the mod is installed), then `systemctl --user enable --now agent-board-web`. It serves the static files plus `/usage.json` (Claude and Codex limits left, read from T3's provider logs, Codex rollouts and the Codex plan dates; Claude's renewal date is not stored locally). The `/board web` fallback server has no `/usage.json`. The session data still comes from the snapshots live sessions write, so ended sessions show as ended. `/board web` copes with the port already being served.
 
 ## Limits
 
