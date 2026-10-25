@@ -118,7 +118,7 @@ export const t3Nodes = (scan: T3Scan, now: number): AgentNode[] =>
 // "gpt-6.1-sol · high": what routing actually picked, so it can be checked against the policy table.
 export const t3Label = (node: AgentNode) => node.t3 ? [node.model, node.t3.effort].filter(Boolean).join(' · ') : ''
 
-export const scanT3 = async ($: EngineInterface, sessionId: string): Promise<T3Scan | undefined> => {
+export async function scanT3($: EngineInterface, sessionId: string): Promise<T3Scan | undefined> {
   const ran = await $.process.run(['python3', '-I', '-c', T3_SCANNER, sessionId], { timeoutMs: 8000 }).catch(() => undefined)
   if (!ran || ran.exitCode !== 0) return undefined
   try {

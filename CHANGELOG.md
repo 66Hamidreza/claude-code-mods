@@ -17,6 +17,7 @@ All notable changes are documented here using [Keep a Changelog](https://keepach
 
 ### Fixed
 
+- agent-board: the hooks module failed to load in new sessions because the T3 scanner was an arrow function; mod loaders only follow `$` into imported function declarations.
 - agent-board: silent sessions that were not working are shown as ended instead of "needs attention".
 
 ## [0.1.0] - 2026-10-24
