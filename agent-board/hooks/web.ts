@@ -339,9 +339,9 @@ function bestVersions(sessions) {
 }
 function order(agents) {
   var ids = new Set(agents.map(function (a) { return a.id; })), kids = new Map(), out = [];
-  agents.forEach(function (a) { if (a.kind !== 'main') { var p = ids.has(a.parentId) ? a.parentId : 'main'; kids.set(p, (kids.get(p) || []).concat([a])); } });
+  agents.forEach(function (a) { if (a.id !== 'main') { var p = ids.has(a.parentId) ? a.parentId : 'main'; kids.set(p, (kids.get(p) || []).concat([a])); } });
   var walk = function (a, d, parent) { out.push({ a: a, d: d, parent: parent }); (kids.get(a.id) || []).forEach(function (k) { walk(k, d + 1, a.id); }); };
-  var main = agents.find(function (a) { return a.kind === 'main'; }); if (main) walk(main, 0, null);
+  var main = agents.find(function (a) { return a.id === 'main'; }); if (main) walk(main, 0, null);
   return out;
 }
 function edgeState(a) {
@@ -352,14 +352,14 @@ function edgeState(a) {
 }
 function stateChip(s, info) {
   if (info.silent || info.ended) return '';
-  var main = info.agents.find(function (a) { return a.kind === 'main'; });
+  var main = info.agents.find(function (a) { return a.id === 'main'; });
   return main && main.status === 'running' ? '<span class="chip live-on">working</span>' : '<span class="chip live-idle">idle, waiting for you</span>';
 }
 function flagged(a) { return a.health && a.health !== 'ok' && a.health !== 'idle'; }
 function sessionInfo(s, now) {
   var agents = s.agents || [], stale = now - s.updatedAt > SILENT, working = agents.some(function (a) { return a.status === 'running'; });
-  var ended = !!s.isEnded || now - s.updatedAt > 15000, silent = !s.isEnded && stale && working;
-  var run = agents.filter(function (a) { return a.kind !== 'main' && a.status === 'running'; }).length;
+  var ended = !!s.isEnded || (!s.standaloneCodex && now - s.updatedAt > 15000), silent = !s.standaloneCodex && !s.isEnded && stale && working;
+  var run = agents.filter(function (a) { return a.id !== 'main' && a.status === 'running'; }).length;
   var fail = agents.filter(function (a) { return a.status === 'failed'; }).length;
   var warn = agents.filter(flagged);
   var codex = agents.filter(function (a) { return a.kind === 'codex'; });
@@ -372,7 +372,7 @@ function rowHtml(r, best, now, ended) {
   var doing = a.tool ? a.tool + (a.detail ? ' · ' + a.detail : '') : a.t3 ? (over ? (a.t3.result || a.status) : 'working') : a.kind === 'codex' ? (a.detail || 'starting') : a.status;
   var fl = flagged(a), st = a.status;
   var third = a.codex && over && a.codex.summary ? a.codex.summary : a.codex ? a.codex.files.length + ' files' + (a.codex.tasks.length ? ' · ' + a.codex.tasks.join(', ') : '') : '';
-  var line = over ? [a.t3 ? '' : a.tools + (a.kind === 'codex' ? ' cmds' : ' tools'), a.errors ? a.errors + ' err' : '', a.tokens ? tok(a.tokens) : '', dur(end - a.startedAt)].filter(Boolean).join(' · ') : doing;
+  var line = over ? [a.kind === 'codex' && !a.codex && !a.t3 ? a.detail : '', a.t3 ? '' : a.tools + (a.kind === 'codex' ? ' cmds' : ' tools'), a.errors ? a.errors + ' err' : '', a.tokens ? tok(a.tokens) : '', dur(end - a.startedAt)].filter(Boolean).join(' · ') : doing;
   var pct = Math.max(2, Math.min(100, Math.round((a.tokens || 0) / (a.kind === 'codex' ? 1200000 : 300000) * 100)));
   return '<div role="listitem" class="row ' + mc.cls + ' ' + esc(st) + (over ? ' done-row' : '') + '" style="--d:' + r.d + '" data-id="' + esc(a.id) + '"' + (r.parent ? ' data-p="' + esc(r.parent) + '" data-edge="' + edgeState(a) + '"' : '') + ' title="' + esc(a.label + '\\n' + (a.healthNote || '') + (a.codex && a.codex.summary ? '\\n' + a.codex.summary : '')) + '">' +
     '<i class="dot" aria-hidden="true"></i><span class="name"><b>' + esc(clip(a.label, 70)) + '</b>' + (mc.label ? '<span class="badge">' + esc(mc.label) + '</span>' : '') + '</span>' +
@@ -485,13 +485,13 @@ function setTree(tree, html) {
 }
 
 function render() {
-  var now = Date.now(), live = all.filter(function (s) { return now - s.updatedAt < LIVE; });
+  var now = Date.now(), live = all.filter(function (s) { return now - s.updatedAt < (s.standaloneCodex ? 7200000 : LIVE); });
   // A T3 child thread already shows as a node under its parent thread's session.
   var threads = {}; live.forEach(function (s) { if (s.t3) threads[s.t3.threadId] = 1; });
   live = live.filter(function (s) { return !(s.t3 && s.t3.parentThreadId && threads[s.t3.parentThreadId]); });
   var infos = new Map(); live.forEach(function (s) { infos.set(s.sessionId, sessionInfo(s, now)); });
   var best = bestVersions(live), board = document.getElementById('board');
-  if (!live.length) { setHtml(board, '<div class="empty">No live sessions. Start one with the agent-board mod loaded.</div>'); document.getElementById('attnbox').hidden = true; document.getElementById('nomatch').hidden = true; renderFilters(infos, live); renderLegend(best); return; }
+  if (!live.length) { setHtml(board, '<div class="empty">No recent sessions. Start Claude with agent-board or a Codex thread in T3 Code.</div>'); document.getElementById('attnbox').hidden = true; document.getElementById('nomatch').hidden = true; renderFilters(infos, live); renderLegend(best); return; }
   if (board.querySelector('.empty')) { board.innerHTML = ''; board._h = null; }
   var q = document.getElementById('q').value.trim().toLowerCase(), mode = document.getElementById('sort').value;
   var sorted = live.slice().sort(function (a, b) {
@@ -626,9 +626,11 @@ async function poll() {
   polling = true;
   var live = document.getElementById('live'), status = document.getElementById('status');
   try {
-    var listing = await (await fetch('sessions/', { cache: 'no-store' })).text();
+    var standalone = await fetch('codex-sessions.json', { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : []; }).catch(function () { return []; });
+    var listing = await fetch('sessions/', { cache: 'no-store' }).then(function (r) { return r.text(); }).catch(function () { return ''; });
     var files = Array.from(new Set(Array.from(listing.matchAll(/href="([^"]+\\.json)"/g)).map(function (m) { return m[1]; })));
     all = (await Promise.all(files.map(function (f) { return fetch('sessions/' + f, { cache: 'no-store' }).then(function (r) { return r.json(); }).catch(function () { return null; }); }))).filter(function (s) { return s && !String(s.cwd || '').startsWith('/tmp/remember-summarizer-cwd'); });
+    all = all.concat(Array.isArray(standalone) ? standalone : []);
     render(); notifyNew(all);
     live.classList.remove('stale'); status.textContent = 'live · ' + new Date().toLocaleTimeString();
   } catch (error) {

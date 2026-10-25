@@ -9,14 +9,40 @@ import argparse
 import base64
 import glob
 import http.server
+import importlib.util
 import json
 import os
 import re
 import time
+import threading
+from pathlib import Path
 
 HOME = os.path.expanduser('~')
 CACHE = {'at': 0.0, 'body': b'{}'}
 TAIL = 3_000_000
+MOD_ROOT = Path(__file__).resolve().parent
+spec = importlib.util.spec_from_file_location('codex_standalone', MOD_ROOT / 'hooks/codex_standalone.py')
+standalone = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(standalone)
+CODEX_SCANNER = standalone.Scanner(HOME)
+CODEX_LOCK = threading.Lock()
+CODEX_CACHE = {'at': 0.0, 'body': b'[]'}
+
+
+def codex_sessions_body():
+    with CODEX_LOCK:
+        now = time.time()
+        if now - CODEX_CACHE['at'] > 3:
+            CODEX_CACHE.update(at=now, body=json.dumps(CODEX_SCANNER.scan(now)).encode())
+        return CODEX_CACHE['body']
+
+
+def web_page():
+    # web.ts is a plain template literal with escaped backslashes, no interpolation.
+    # Serve the installed template directly, including before any Claude session starts.
+    source = (MOD_ROOT / 'hooks/web.ts').read_text(encoding='utf-8')
+    template = source.split('export const WEB_PAGE = `', 1)[1].rsplit('`', 1)[0]
+    return template.replace('\\\\', '\\').encode('utf-8')
 
 
 def tail_lines(path, size=TAIL):
@@ -159,13 +185,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if self.headers.get('Host', '').split(':')[0] not in ('localhost', '127.0.0.1'):
             self.send_error(403)
             return
-        if self.path.split('?')[0] == '/usage.json':
+        route = self.path.split('?')[0]
+        if route in ('/usage.json', '/codex-sessions.json', '/', '/index.html'):
             try:
-                body = usage_body()
+                body = web_page() if route in ('/', '/index.html') else codex_sessions_body() if route == '/codex-sessions.json' else usage_body()
             except Exception:
-                body = b'{}'
+                body = b'[]' if route == '/codex-sessions.json' else b'{}'
             self.send_response(200)
-            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Type', 'text/html; charset=utf-8' if route in ('/', '/index.html') else 'application/json')
             self.send_header('Cache-Control', 'no-store')
             self.send_header('Content-Length', str(len(body)))
             self.end_headers()

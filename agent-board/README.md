@@ -4,7 +4,7 @@
 /plugin install agent-board --marketplace 66Hamidreza/claude-code-mods
 ```
 
-Observes the main session, subagents, workflow agents, and Codex exec runs. Shows model, current tool, recent calls, errors, tokens, duration, and heuristic health indicators in a terminal pane and a local web board.
+Observes the main session, subagents, workflow agents, Codex exec runs, and standalone Codex main threads driven by T3 Code. Shows model, current tool, recent calls, errors, tokens, duration, and heuristic health indicators in a terminal pane and a local web board.
 
 ## Commands
 
@@ -17,7 +17,7 @@ The pane also offers controls for finished agents and history. The web board sup
 
 ## Configuration and operation
 
-No custom environment variables; `HOME` locates `~/.claude/mods-data/agent-board/web` and `~/.codex/sessions`. Polls agent state every second and writes session snapshots for the web board. Inside T3 Code, delegated children are read from `~/.t3/userdata/statev2.sqlite` (read-only, matched to the session by its provider thread id). Python 3 reads recent Codex rollout logs and serves static files bound to `127.0.0.1:7788`. Explicit `CX_RUN_V1` owner/run markers attribute delegated jobs; interactive Codex TUI sessions are excluded. Orchestration advice from prompt-router is compared with observed execution.
+No custom environment variables; `HOME` locates `~/.claude/mods-data/agent-board/web` and `~/.codex/sessions`. Polls agent state every second and writes session snapshots for the web board. Inside T3 Code, delegated children are read from `~/.t3/userdata/statev2.sqlite` (read-only, matched to the session by its provider thread id). Python 3 reads recent Codex rollout logs and serves static files bound to `127.0.0.1:7788`. Explicit `CX_RUN_V1` owner/run markers attribute delegated jobs; interactive Codex TUI sessions are excluded. The always-on server independently scans T3 Code Codex main rollouts, excluding CX-marked runs and native IDs mapped to T3 delegated children. Orchestration advice from prompt-router is compared with observed execution.
 
 ## Usage header
 
@@ -25,7 +25,7 @@ The top of the web page shows how much of the Claude and Codex limits is left (5
 
 ## Always-on web board
 
-Optional: serve the board without any session open. Copy `agent-board-web.service` to `~/.config/systemd/user/` (it runs `server.py`; adjust the path to where the mod is installed), then `systemctl --user enable --now agent-board-web`. It serves the static files plus `/usage.json` (Claude and Codex limits left, read from T3's provider logs, Codex rollouts and the Codex plan dates; Claude's renewal date is not stored locally). The `/board web` fallback server has no `/usage.json`. The session data still comes from the snapshots live sessions write, so ended sessions show as ended. `/board web` copes with the port already being served.
+Optional: serve the board without any session open. Copy `agent-board-web.service` to `~/.config/systemd/user/` (it runs `server.py`; adjust the path to where the mod is installed), then `systemctl --user enable --now agent-board-web`. It serves the static files plus `/usage.json` (Claude and Codex limits left, read from T3's provider logs, Codex rollouts and the Codex plan dates; Claude's renewal date is not stored locally). The `/board web` fallback server has no `/usage.json`. Claude session data comes from snapshots live sessions write. Standalone T3 Code Codex rows are discovered independently via `/codex-sessions.json`, so they appear without any Claude session or mod hook running. The server serves the installed `hooks/web.ts` page directly. The scanner reads only the newest two day directories, keeps rollouts modified within two hours, caches unchanged files, and shows project, model, last action and token totals. `task_complete` (or an aborted turn) marks done; `task_started` resumes running, with five minutes of log silence also treated as done. T3 child mappings are read-only and refreshed each scan; if an existing T3 database cannot be queried, standalone results are withheld until it recovers. Install `server.py` and `hooks/codex_standalone.py` alongside the updated `hooks/web.ts`, then restart the service. Terminal panes continue to show hook-driven sessions and children. `/board web` copes with the port already being served.
 
 ## Limits
 

@@ -6,6 +6,8 @@ All notable changes are documented here using [Keep a Changelog](https://keepach
 
 ### Added
 
+- agent-board: always-on web board independently discovers recent standalone T3 Code Codex main threads (project, model, action, status, tokens), without Claude hooks; excludes CX runs and T3 delegated children using read-only state.
+
 - agent-board: shows T3 Code `delegate_task` children (model, effort, status, result) by reading T3's local store read-only; the T3 thread title names the session and child threads nest under their parent.
 
 - agent-board: usage header with Claude and Codex limits left (5-hour and weekly windows, reset countdowns) and the Codex subscription end date, served from `/usage.json`.
