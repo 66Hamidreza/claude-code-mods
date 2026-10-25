@@ -4,6 +4,14 @@ All notable changes are documented here using [Keep a Changelog](https://keepach
 
 ## [Unreleased]
 
+### Added
+
+- agent-board: shows T3 Code `delegate_task` children (model, effort, status, result) by reading T3's local store read-only; the T3 thread title names the session and child threads nest under their parent.
+
+### Fixed
+
+- agent-board: silent sessions that were not working are shown as ended instead of "needs attention".
+
 ## [0.1.0] - 2026-10-24
 
 ### Added

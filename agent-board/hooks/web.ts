@@ -194,11 +194,12 @@ function parseModel(raw) {
   return { fam: fam, ver: hit ? major * 100 + minor : 0, label: fam[0].toUpperCase() + fam.slice(1) + (hit ? ' ' + major + (hit[2] ? '.' + minor : '') : '') };
 }
 function modelClass(a, best) {
-  if (a.kind === 'codex') return { cls: 'codex t' + (a.status === 'done' || a.status === 'failed' ? 3 : 1), label: 'Codex' };
+  var eff = a.t3 && a.t3.effort ? ' · ' + a.t3.effort : '';
+  if (a.kind === 'codex') return { cls: 'codex t' + (a.status === 'done' || a.status === 'failed' ? 3 : 1), label: a.t3 ? clip(a.model, 22) + eff : 'Codex' };
   var p = parseModel(a.model);
   if (!p.fam) return { cls: 't1', label: a.model ? clip(a.model, 18) : '' };
   var top = best[p.fam] || p.ver, tier = !p.ver ? 2 : p.ver === top ? 1 : Math.floor(p.ver / 100) === Math.floor(top / 100) ? 2 : 3;
-  return { cls: p.fam + ' t' + tier, label: p.label };
+  return { cls: p.fam + ' t' + tier, label: p.label + eff };
 }
 function bestVersions(sessions) {
   var best = {};
@@ -225,7 +226,8 @@ function stateChip(s, info) {
 }
 function flagged(a) { return a.health && a.health !== 'ok' && a.health !== 'idle'; }
 function sessionInfo(s, now) {
-  var agents = s.agents || [], ended = !!s.isEnded || now - s.updatedAt > 15000, silent = !s.isEnded && now - s.updatedAt > SILENT;
+  var agents = s.agents || [], stale = now - s.updatedAt > SILENT, working = agents.some(function (a) { return a.status === 'running'; });
+  var ended = !!s.isEnded || now - s.updatedAt > 15000, silent = !s.isEnded && stale && working;
   var run = agents.filter(function (a) { return a.kind !== 'main' && a.status === 'running'; }).length;
   var fail = agents.filter(function (a) { return a.status === 'failed'; }).length;
   var warn = agents.filter(flagged);
@@ -236,10 +238,10 @@ function sessionInfo(s, now) {
 
 function rowHtml(r, best, now, ended) {
   var a = r.a, mc = modelClass(a, best), end = a.endedAt || now, over = a.status === 'done' || a.status === 'failed';
-  var doing = a.tool ? a.tool + (a.detail ? ' · ' + a.detail : '') : a.kind === 'codex' ? (a.detail || 'starting') : a.status;
+  var doing = a.tool ? a.tool + (a.detail ? ' · ' + a.detail : '') : a.t3 ? (over ? (a.t3.result || a.status) : 'working') : a.kind === 'codex' ? (a.detail || 'starting') : a.status;
   var fl = flagged(a), st = a.status;
   var third = a.codex && over && a.codex.summary ? a.codex.summary : a.codex ? a.codex.files.length + ' files' + (a.codex.tasks.length ? ' · ' + a.codex.tasks.join(', ') : '') : '';
-  var line = over ? [a.tools + (a.kind === 'codex' ? ' cmds' : ' tools'), a.errors ? a.errors + ' err' : '', a.tokens ? tok(a.tokens) : '', dur(end - a.startedAt)].filter(Boolean).join(' · ') : doing;
+  var line = over ? [a.t3 ? '' : a.tools + (a.kind === 'codex' ? ' cmds' : ' tools'), a.errors ? a.errors + ' err' : '', a.tokens ? tok(a.tokens) : '', dur(end - a.startedAt)].filter(Boolean).join(' · ') : doing;
   var pct = Math.max(2, Math.min(100, Math.round((a.tokens || 0) / (a.kind === 'codex' ? 1200000 : 300000) * 100)));
   return '<div class="row ' + mc.cls + ' ' + esc(st) + (over ? ' done-row' : '') + '" style="--d:' + r.d + '" data-id="' + esc(a.id) + '"' + (r.parent ? ' data-p="' + esc(r.parent) + '" data-edge="' + edgeState(a) + '"' : '') + ' title="' + esc(a.label + '\\n' + (a.healthNote || '') + (a.codex && a.codex.summary ? '\\n' + a.codex.summary : '')) + '">' +
     '<i class="dot"></i><span class="name"><b>' + esc(clip(a.label, 70)) + '</b>' + (mc.label ? '<span class="badge">' + esc(mc.label) + '</span>' : '') + '</span>' +
@@ -326,6 +328,9 @@ function setHtml(el, html) { if (el._h !== html) { el._h = html; el.innerHTML = 
 
 function render() {
   var now = Date.now(), live = all.filter(function (s) { return now - s.updatedAt < LIVE; });
+  // A T3 child thread already shows as a node under its parent thread's session.
+  var threads = {}; live.forEach(function (s) { if (s.t3) threads[s.t3.threadId] = 1; });
+  live = live.filter(function (s) { return !(s.t3 && s.t3.parentThreadId && threads[s.t3.parentThreadId]); });
   var infos = new Map(); live.forEach(function (s) { infos.set(s.sessionId, sessionInfo(s, now)); });
   var best = bestVersions(live), board = document.getElementById('board');
   if (!live.length) { board.innerHTML = '<div class="empty">No live sessions. Start one with the agent-board mod loaded.</div>'; document.getElementById('attnbox').hidden = true; renderFilters(infos, live); return; }

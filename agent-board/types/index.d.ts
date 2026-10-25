@@ -27,6 +27,9 @@ export type CodexInfo = {
   activityAt: number
 }
 
+// A child T3 Code delegated through delegate_task, read from T3's own store.
+export type T3Info = { threadId: string; driver: string; effort?: string; result?: string }
+
 export type AgentNode = {
   id: string
   parentId?: string
@@ -52,6 +55,7 @@ export type AgentNode = {
   healthNote?: string
   codex?: CodexInfo
   toolUseId?: string
+  t3?: T3Info
 }
 
 export type BoardEvent = { at: number; level: 'info' | 'done' | 'warn' | 'fail'; text: string; nodeId?: string }

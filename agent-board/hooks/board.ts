@@ -293,6 +293,8 @@ export type Snapshot = {
   name: string
   // The title Claude Code gives the session; empty until its transcript has one.
   title?: string
+  // Set when the session is a T3 Code thread; a child thread names its parent so the board nests it.
+  t3?: { threadId: string; parentThreadId?: string | null }
   cwd: string
   updatedAt: number
   isEnded?: boolean
@@ -364,13 +366,14 @@ const fade = (hex: string, strength: number) => {
 
 // tier 1 = newest of its family (full), 2 = same major, 3 = older. Codex is always its own magenta, faded once finished.
 export const modelTone = (node: AgentNode, best: Partial<Record<ModelFamily, number>>) => {
-  if (node.kind === 'codex') return { color: fade(FAMILY_HUE.codex, node.status === 'done' || node.status === 'failed' ? 0.5 : 1), label: 'Codex' }
+  const effort = node.t3?.effort ? ` · ${node.t3.effort}` : ''
+  if (node.kind === 'codex') return { color: fade(FAMILY_HUE.codex, node.status === 'done' || node.status === 'failed' ? 0.5 : 1), label: node.t3 ? `${node.model}${effort}` : 'Codex' }
   const { family, version, label } = parseModel(node.model)
   if (!family) return { color: NO_MODEL, label: node.model }
   const top = best[family] ?? version
   const tier = !version ? 2 : version === top ? 1 : Math.floor(version / 100) === Math.floor(top / 100) ? 2 : 3
 
-  return { color: fade(FAMILY_HUE[family], tier === 1 ? 1 : tier === 2 ? 0.7 : 0.45), label }
+  return { color: fade(FAMILY_HUE[family], tier === 1 ? 1 : tier === 2 ? 0.7 : 0.45), label: `${label}${effort}` }
 }
 
 // Which way a link is flowing: the task going down to the child, or its answer coming back up.

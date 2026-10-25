@@ -17,7 +17,11 @@ The pane also offers controls for finished agents and history. The web board sup
 
 ## Configuration and operation
 
-No custom environment variables; `HOME` locates `~/.claude/mods-data/agent-board/web` and `~/.codex/sessions`. Polls agent state every second and writes session snapshots for the web board. Python 3 reads recent Codex rollout logs and serves static files bound to `127.0.0.1:7788`. Explicit `CX_RUN_V1` owner/run markers attribute delegated jobs; interactive Codex TUI sessions are excluded. Orchestration advice from prompt-router is compared with observed execution.
+No custom environment variables; `HOME` locates `~/.claude/mods-data/agent-board/web` and `~/.codex/sessions`. Polls agent state every second and writes session snapshots for the web board. Inside T3 Code, delegated children are read from `~/.t3/userdata/statev2.sqlite` (read-only, matched to the session by its provider thread id). Python 3 reads recent Codex rollout logs and serves static files bound to `127.0.0.1:7788`. Explicit `CX_RUN_V1` owner/run markers attribute delegated jobs; interactive Codex TUI sessions are excluded. Orchestration advice from prompt-router is compared with observed execution.
+
+## Always-on web board
+
+Optional: serve the board without any session open. Copy `agent-board-web.service` to `~/.config/systemd/user/`, then `systemctl --user enable --now agent-board-web`. It only serves the static files; the data still comes from the snapshots live sessions write, so ended sessions show as ended. `/board web` copes with the port already being served.
 
 ## Limits
 

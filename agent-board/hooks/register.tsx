@@ -30,6 +30,8 @@ import {
 } from './board'
 import type { OrchestrationAdvice, Snapshot } from './board'
 import { scanCodex } from './codex'
+import { scanT3, t3Nodes } from './t3'
+import type { T3Scan } from './t3'
 import { WEB_PAGE } from './web'
 
 const PANE = 'agent-board'
@@ -57,6 +59,8 @@ const lastSeen = new Map<string, number>()
 const announced = new Map<string, string>()
 const turnStarts = new Map<string, number>()
 let peerStates = new Map<string, PeerSession['state']>()
+// What T3 Code says about this session's thread; empty outside T3.
+let t3Thread: { threadId: string; title: string; parentThreadId?: string | null } | undefined
 
 const dataDir = async ($: EngineInterface) => `${(await $.env.get('HOME')) ?? ''}/.claude/mods-data`
 
@@ -144,6 +148,30 @@ const syncCodex = async ($: EngineInterface) => {
   }
 }
 
+// T3 Code's delegated children and the thread title, read from T3's store.
+const syncT3 = async ($: EngineInterface, at: number) => {
+  const scan: T3Scan | undefined = await scanT3($, sessionId)
+  if (!scan) return
+  t3Thread = { threadId: scan.threadId, title: scan.title, parentThreadId: scan.parentThreadId }
+  for (const fresh of t3Nodes(scan, at)) {
+    const before = (await read($, agents)).find(one => one.id === fresh.id)
+    await update($, agents, upsert(fresh))
+    if (fresh.status === 'running' || before?.status === fresh.status) continue
+    const who = `${fresh.t3?.driver === 'codex' ? 'Codex' : 'Agent'} "${clip(fresh.label, 40)}"`
+    await announce(
+      $,
+      `${fresh.id}:end`,
+      {
+        level: fresh.status === 'done' ? 'done' : 'fail',
+        text: `${fresh.status === 'done' ? '✓' : '✗'} ${who} ${fresh.status === 'done' ? 'finished' : 'failed'} (${formatDuration((fresh.endedAt ?? at) - fresh.startedAt)}): ${clip(fresh.t3?.result ?? fresh.model, 140)}`,
+        nodeId: fresh.id,
+      },
+      fresh.status === 'failed' || (fresh.endedAt ?? at) - fresh.startedAt > NOTIFY_AFTER_MS,
+      fresh.status,
+    )
+  }
+}
+
 // Other sessions' snapshots: who is working, idle, stuck, or gone quiet.
 const syncPeers = async ($: EngineInterface, at: number) => {
   const dir = `${await dataDir($)}/agent-board/web/sessions`
@@ -200,7 +228,8 @@ const writeSnapshot = async ($: EngineInterface, at: number, isEnded = false) =>
   const snapshot: Snapshot & { activity: number[]; events: BoardEvent[] } = {
     sessionId,
     name: cwd.split('/').pop() ?? cwd,
-    title: await sessionTitle($, cwd, at),
+    title: t3Thread?.title || (await sessionTitle($, cwd, at)),
+    t3: t3Thread,
     cwd,
     updatedAt: at,
     isEnded,
@@ -259,6 +288,7 @@ const sync = async ($: EngineInterface) => {
 
   if (tick % 2 === 0) await syncCodex($)
   if (tick % 3 === 0) await syncPeers($, at)
+  if (tick % 3 === 1) await syncT3($, at)
 
   // Health: fold in what the model streamed since, then judge every node.
   await update($, agents, list => {
@@ -282,7 +312,7 @@ const sync = async ($: EngineInterface) => {
       await announce($, `${one.id}:health`, { level: 'warn', text: `⏸ ${who}: ${one.healthNote ?? 'waiting for approval'}`, nodeId: one.id }, false, one.health)
     } else announced.delete(`${one.id}:health`)
 
-    if (one.kind !== 'main' && one.kind !== 'codex' && isOver(one)) {
+    if (one.kind !== 'main' && one.kind !== 'codex' && !one.t3 && isOver(one)) {
       const took = (one.endedAt ?? at) - one.startedAt
       await announce(
         $,
@@ -667,7 +697,7 @@ export const register: Register = on => {
           const elapsed = formatDuration((one.endedAt ?? at) - one.startedAt)
           const meta = [
             one.kind === 'agent' ? one.type : one.kind,
-            one.kind === 'codex' ? `${one.tools} cmds` : `${one.tools} tools`,
+            one.t3 ? '' : one.kind === 'codex' ? `${one.tools} cmds` : `${one.tools} tools`,
             one.errors ? `${one.errors} err` : '',
             one.tokens ? formatTokens(one.tokens) : '',
             elapsed,
