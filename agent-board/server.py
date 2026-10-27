@@ -373,7 +373,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def do_GET(self):
         # Refuse foreign Host headers so a web page cannot read local data through DNS rebinding.
-        if self.headers.get('Host', '').split(':')[0] not in ('localhost', '127.0.0.1'):
+        if self.headers.get('Host', '').split(':')[0] not in ('localhost', '127.0.0.1', 'abd'):
             self.send_error(403)
             return
         route = self.path.split('?')[0]

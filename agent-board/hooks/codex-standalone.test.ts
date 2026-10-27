@@ -208,9 +208,9 @@ test('T3 child dedupe requires five consecutive matching or missing polls', () =
 test('All excludes old ended sessions while preserving recent, waiting, running and pinned sessions', () => {
   const run = new Function(webHelpers(['activeSession', 'filterMatch']) + `
     var pinned={pinned:true},old={run:0,ended:true,issues:[],age:1800001,codex:[]};
-    if(filterMatch({sessionId:'old'},old,'all'))throw Error('Old ended session in All');
+    if(filterMatch({sessionId:'old'},old,'all')||filterMatch({sessionId:'old'},{...old,age:5,issues:[{}]},'all'))throw Error('Ended session in All');
     if(!filterMatch({sessionId:'old'},old,'ended'))throw Error('Missing Ended count');
-    for(var info of [{...old,age:5},{...old,ended:false},{...old,run:1}])
+    for(var info of [{...old,ended:false},{...old,run:1}])
       if(!filterMatch({sessionId:'x'},info,'all'))throw Error('Active session excluded');
     if(!filterMatch({sessionId:'pinned'},old,'all'))throw Error('Pinned session excluded');
     return true;

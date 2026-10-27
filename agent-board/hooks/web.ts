@@ -408,7 +408,7 @@ function dedupedSessions(sessions) {
   return sessions.filter(function (s) { return pinned[s.sessionId] || !dedupeState.has(s.sessionId) || !dedupeState.get(s.sessionId).hidden; });
 }
 function activeSession(s, info) {
-  return !!pinned[s.sessionId] || info.run > 0 || !info.ended || info.issues.length > 0 || info.age < 1800000;
+  return !!pinned[s.sessionId] || info.run > 0 || !info.ended;
 }
 function filterMatch(s, info, value) {
   if (value === 'ended') return info.ended;
