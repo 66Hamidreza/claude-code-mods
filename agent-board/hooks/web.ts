@@ -219,7 +219,10 @@ svg.edges { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
 
 /* Dense product surfaces retain the original palette and give controls stable DOM identity. */
-.sess { overflow: visible; }
+.sess { overflow: visible; position: relative; }
+.sess-x { position: absolute; top: 8px; right: 8px; z-index: 6; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font-size: 13px; line-height: 1; cursor: pointer; }
+.sess-x:hover { background: var(--sunk); color: var(--ink); }
+.sess-head { padding-right: 40px; }
 .sess-head { border-radius: 8px 8px 0 0; text-align: start; }
 .session-summary { display:flex; flex-wrap:wrap; gap:6px 18px; position:sticky; top:0; z-index:5; background:var(--panel); border-block:1px solid var(--line); padding:9px 18px; color:var(--muted); font-size:11px; border-radius:0; }
 .session-summary b { color:var(--ink); }
@@ -324,7 +327,7 @@ var store = {
   get: function (k, d) { try { var v = localStorage.getItem('ab.' + k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
   set: function (k, v) { try { localStorage.setItem('ab.' + k, JSON.stringify(v)); return true; } catch (e) { return false; } }
 };
-var pinned = store.get('pinned', {}), folded = store.get('closed', {}), finishedOpen = store.get('finishedOpen', {}), muted = store.get('muted', {});
+var pinned = store.get('pinned', {}), folded = store.get('closed', {}), finishedOpen = store.get('finishedOpen', {}), muted = store.get('muted', {}), dismissed = store.get('dismissed', {});
 var acknowledged = store.get('acknowledged', {}), issueEpisodes = store.get('issueEpisodes', {}), clearedAt = store.get('clearedAt', {});
 var agentControls = {}, rowLimits = {}, filter = 'all', all = [], visibleSessions = [], infos = new Map(), lastGood = new Map(), confirmedMissing = new Map();
 var usageData = null, usageBusy = false, usageSamples = new Map(), worstRemaining = null;
@@ -350,8 +353,9 @@ function issue(s, a, kind, now, fallbackAt, detail) {
 }
 function sessionInfo(s, now) {
   var agents = nodes(s), run = agents.filter(isRunning).length, age = Math.max(0, now - stamp(s));
-  var waiting = agents.some(function (a) { return a.status !== 'done' && a.status !== 'failed' && String(a.phase || '').startsWith('waiting-'); });
-  var ended = !!s.isEnded || (!run && !waiting && age > 600000), silent = !ended && run > 0 && age > SILENT;
+  var blocked = agents.some(function (a) { return a.status !== 'done' && a.status !== 'failed' && (a.phase === 'waiting-approval' || a.phase === 'waiting-input' || a.health === 'approval'); });
+  var child = !!(s.t3 && s.t3.parentThreadId), lastWork = agents.reduce(function (m, a) { return Math.max(m, finiteNumber(a.activityAt) ? a.activityAt : 0, finiteNumber(a.endedAt) ? a.endedAt : 0); }, 0);
+  var ended = !!s.isEnded || (!run && !blocked && (age > 600000 || child && lastWork > 0 && now - lastWork > 120000)), silent = !ended && run > 0 && age > SILENT;
   var current = [];
   if (!ended) {
     agents.forEach(function (a) {
@@ -377,7 +381,7 @@ function sessionInfo(s, now) {
   return { agents: agents, run: run, ended: ended, silent: silent, age: age, issues: issues, currentIssues: current, warn: agents.filter(flagged), fail: agents.filter(function (a) { return a.status === 'failed'; }).length, codex: agents.filter(function (a) { return a.kind === 'codex'; }), sev: issues.length ? 3 : ended ? 0 : run ? 2 : 1 };
 }
 function stateChip(s, info) {
-  if (info.ended) return chip('', 'Ended', 'Session explicitly ended, or has no running agents and has been quiet for 10 minutes');
+  if (info.ended) return chip('', 'Ended', 'Session explicitly ended, or has no running agents and has been quiet for 10 minutes (2 minutes for a delegated child)');
   if (info.silent) return chip('fail', 'No heartbeat', 'Disconnected or no heartbeat; running work is retained');
   var main = info.agents.find(function (a) { return a.kind === 'main' || a.id === 'main'; });
   var phase = main && main.phase;
@@ -416,6 +420,7 @@ function filterMatch(s, info, value) {
   return value === 'all' || value === 'attn' && info.issues.length > 0 || value === 'run' && info.run > 0 && !info.ended || value === 'codex' && info.codex.length > 0;
 }
 function matches(s, info) {
+  if (dismissed[s.sessionId] !== undefined && stamp(s) <= dismissed[s.sessionId] + 15000 && !pinned[s.sessionId]) return false;
   var q = document.getElementById('q').value.trim().toLowerCase();
   var hay = [sessionName(s), s.cwd || '', info.issues.map(function (x) { return x.kind; }).join(' '), info.run ? 'running working' : '', info.codex.length ? 'codex' : '', info.ended ? 'ended' : ''].join(' ').toLowerCase();
   return (!q || hay.includes(q)) && filterMatch(s, info, filter);
@@ -765,7 +770,7 @@ function drawEdges(tree) {
 }
 function sectionFor(s) {
   var el = document.createElement('section'); el.id = 'sess-' + s.sessionId; el.className = 'sess'; el.dataset.sid = s.sessionId;
-  el.innerHTML = '<button class="sess-head" aria-expanded="true" title="Expand or collapse this session"></button><div class="session-summary"></div><div class="inner"><div class="tools"><button class="mini pin" title="Keep this session available">☆ Pin</button><button class="mini mute" title="Mute notifications for this session">Mute</button><button class="mini copy" title="Copy the session folder">Copy path</button><input class="search agent-search" type="search" placeholder="Find an agent" aria-label="Search agents in this session"><select class="sel agent-filter" aria-label="Filter agents in this session"><option value="all">All agents</option><option value="running">Running</option><option value="flagged">Flagged</option><option value="codex">Codex</option></select></div><div class="pulse"></div><div class="body"><div class="tree" role="list"></div><aside class="feedcol" aria-label="Recent events"><h2>Timeline</h2><ul class="feed"></ul><div class="acts"><button class="mini clr-hist">Clear history</button></div></aside></div></div>';
+  el.innerHTML = '<button class="sess-x" aria-label="Close session" title="Close: hide this session until it is active again">✕</button><button class="sess-head" aria-expanded="true" title="Expand or collapse this session"></button><div class="session-summary"></div><div class="inner"><div class="tools"><button class="mini pin" title="Keep this session available">☆ Pin</button><button class="mini mute" title="Mute notifications for this session">Mute</button><button class="mini copy" title="Copy the session folder">Copy path</button><input class="search agent-search" type="search" placeholder="Find an agent" aria-label="Search agents in this session"><select class="sel agent-filter" aria-label="Filter agents in this session"><option value="all">All agents</option><option value="running">Running</option><option value="flagged">Flagged</option><option value="codex">Codex</option></select></div><div class="pulse"></div><div class="body"><div class="tree" role="list"></div><aside class="feedcol" aria-label="Recent events"><h2>Timeline</h2><ul class="feed"></ul><div class="acts"><button class="mini clr-hist">Clear history</button></div></aside></div></div>';
   el.querySelector('.agent-search').dataset.focus = 'agent-search-' + s.sessionId;
   el.querySelector('.agent-filter').dataset.focus = 'agent-filter-' + s.sessionId;
   return el;
@@ -861,6 +866,7 @@ document.addEventListener('click', function (e) {
   if (t.dataset.dismissReset) { resetDismissed[t.dataset.dismissReset] = serverNow(); resetDismissed = Object.fromEntries(Object.entries(resetDismissed).sort(function (a, b) { return b[1] - a[1]; }).slice(0, 200)); store.set('usageResetDismissed', resetDismissed); resetNotices.delete(t.dataset.dismissReset); resetTitlePending = resetNotices.size > 0 && resetTitlePending; renderUsage(); return; }
   var sec = t.closest('.sess'), sid = sec && sec.dataset.sid;
   if (t.matches('.sess-head')) { folded[sid] = !sec.classList.contains('closed'); store.set('closed', folded); render(); return; }
+  if (t.matches('.sess-x')) { var open = all.find(function (x) { return x.sessionId === sid; }); dismissed[sid] = open ? stamp(open) : serverNow(); store.set('dismissed', dismissed); render(); return; }
   if (t.matches('.pin')) { pinned[sid] = !pinned[sid]; store.set('pinned', pinned); render(); return; }
   if (t.matches('.mute')) { muted[sid] = !muted[sid]; store.set('muted', muted); pendingAlerts.delete(sid); render(); return; }
   if (t.matches('.copy')) { if (navigator.clipboard) navigator.clipboard.writeText(t.dataset.path).then(function () { textIfChanged(t, 'Copied'); setTimeout(function () { textIfChanged(t, 'Copy path'); }, 1200); }, function () { textIfChanged(t, 'Copy unavailable'); }); return; }
@@ -915,6 +921,7 @@ alertsControl.addEventListener('change', async function () {
 window.addEventListener('storage', function (e) {
   if (e.key === 'ab.usageResetDismissed') { resetDismissed = store.get('usageResetDismissed', {}); resetNotices.forEach(function (notice, id) { if (resetDismissed[id]) resetNotices.delete(id); }); renderUsage(); }
   if (e.key === 'ab.alertMode') { alertMode = store.get('alertMode', 'off'); pendingAlerts.clear(); syncAlertsControl(); }
+  if (e.key === 'ab.dismissed') { dismissed = store.get('dismissed', {}); render(); }
   if (e.key === 'ab.muted') { muted = store.get('muted', {}); render(); }
   if (e.key === 'ab.acknowledged') { acknowledged = store.get('acknowledged', {}); pendingAlerts.clear(); render(); }
 });

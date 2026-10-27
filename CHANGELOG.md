@@ -4,9 +4,18 @@ All notable changes are documented here using [Keep a Changelog](https://keepach
 
 ## [Unreleased]
 
+### Fixed
+
+- agent-board web: a delegated child session (for example a council member) that finished no longer sits in "Waiting for you" forever; it counts as ended after 2 quiet minutes. Only a pending approval or input keeps a session from ending.
+
+### Added (close button)
+
+- agent-board web: a ✕ button on each session hides it until it is active again (stored in the browser).
+
 ### Added
 
 - t3-routing: a routing policy for T3 Code users (a `CLAUDE.md` snippet, not a plugin): session-start catalog read, triage, per-task model routing through `delegate_task`, a rare council, and a change log. English and Persian guides.
+- t3-routing: portable tier table with Start / Escalate / Fallback columns, new rows (exploration, CI triage, planning, perf, data/SQL, i18n, debug with/without repro), one escalation ladder, and author-relative review independence.
 
 ## [0.2.0] - 2026-10-27
 
