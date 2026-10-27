@@ -14,6 +14,18 @@ A public marketplace of Claude Code function-hook plugins. Each mod can be insta
 | [prompt-router](prompt-router/README.md) | Route prompts by rules and classification; advise on parallel work. |
 | [t3-routing](t3-routing/README.md) | Policy (a `CLAUDE.md` snippet, not a plugin) for T3 Code users: triage, per-task model routing through `delegate_task`, and a rare council. |
 
+## T3 Code routing policy
+
+If you run Claude Code inside [T3 Code](https://t3.codes), [t3-routing](t3-routing/README.md) gives the main thread a routing policy instead of a plugin: paste one snippet into your `CLAUDE.md` and the model will
+
+- read the live model catalog at session start (no hardcoded model IDs),
+- do small or context-bound work inline and delegate everything else as one coherent `delegate_task` child (at most two at once, no nested delegation),
+- pick the model and effort per task from a table, starting cheap and escalating only on a failed check,
+- convene a rare, read-only council for architecture, security or irreversible decisions,
+- keep pushes, secrets and production infrastructure on the main thread.
+
+It complements `prompt-router`: that mod routes each prompt, this policy routes each task. Start with the [snippet](t3-routing/CLAUDE-snippet.md); decisions and their reasons are recorded in the [routing log](t3-routing/LOG.md).
+
 ## Install
 
 In Claude Code's terminal prompt:
@@ -98,6 +110,10 @@ Built with Claude (Anthropic) and OpenAI Codex as AI coding collaborators. The m
 | [agent-board](docs/fa/agent-board.md) | نمایش عامل‌ها و کارهای Codex در پنل ترمینال یا داشبورد محلی |
 | [prompt-router](docs/fa/prompt-router.md) | انتخاب مدل با قواعد و دسته‌بندی؛ پیشنهاد اجرای موازی |
 | [t3-routing](docs/fa/t3-routing.md) | سیاست مسیریابی مدل برای کاربران T3 Code (قطعهٔ `CLAUDE.md`، نه افزونه) |
+
+### سیاست مسیریابی T3 Code
+
+اگر Claude Code را داخل [T3 Code](https://t3.codes) اجرا می‌کنید، [t3-routing](docs/fa/t3-routing.md) یک سیاست مسیریابی است نه افزونه: یک قطعه را در `CLAUDE.md` می‌گذارید و مدل در شروع نشست فهرست زندهٔ مدل‌ها را می‌خواند، کار کوچک را خودش انجام می‌دهد، بقیه را با `delegate_task` به مدل مناسب می‌سپارد (از ردیف ارزان شروع و فقط با شکست بررسی بالا می‌رود)، برای تصمیم‌های معماری و امنیتی یک council کم‌یاب تشکیل می‌دهد و push، رمزها و زیرساخت production را در thread اصلی نگه می‌دارد. مکمل prompt-router است: آن هر پرامپت را مسیریابی می‌کند و این هر کار را.
 
 ### نصب
 
