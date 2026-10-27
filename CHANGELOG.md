@@ -4,7 +4,12 @@ All notable changes are documented here using [Keep a Changelog](https://keepach
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-27
+
 ### Fixed
+
+- agent-board web: working agents now glow (pulsing dot, side bar and token bar); inferred parent-to-child flow lines are drawn for children without recorded links, animated while the child works.
+- agent-board web: delegated Codex and Claude children show their token counts and token bar (read from each child's own session log or transcript).
 
 - agent-board web: a delegated child session (for example a council member) that finished no longer sits in "Waiting for you" forever; it counts as ended after 2 quiet minutes. Only a pending approval or input keeps a session from ending.
 
