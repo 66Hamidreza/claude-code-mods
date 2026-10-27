@@ -145,6 +145,19 @@ test('tree order walks depth first and adopts orphans under main', async () => {
   expect(order.map(row => `${row.node.id}:${row.depth}`)).toEqual(['main:0', 'a:1', 'b:2', 'c:1'])
 })
 
+test('tree order keeps main first and sorts siblings by creation time, preserving subtrees and ties', () => {
+  const agents = [node('old', 'main', { startedAt: 10, activityAt: 999 }), node('main'),
+    node('nested-old', 'new', { startedAt: 30 }), node('new', 'main', { startedAt: 20, status: 'done' }),
+    node('nested-new', 'new', { startedAt: 40 }), node('tie', 'main', { startedAt: 20 }),
+    node('orphan', 'missing', { startedAt: 5 })]
+  const before = agents.map(a => a.id)
+  expect(treeOrder(agents).map(({ node, depth, isLast }) => [node.id, depth, isLast])).toEqual([
+    ['main', 0, true], ['new', 1, false], ['nested-new', 2, false], ['nested-old', 2, true],
+    ['tie', 1, false], ['old', 1, false], ['orphan', 1, true],
+  ])
+  expect(agents.map(a => a.id)).toEqual(before)
+})
+
 test('recent calls fold runs of one tool', async () => {
   expect(recentSummary([call('Read', 'a'), call('Read', 'b'), call('Edit', 'a'), call('Bash', 'x', false)])).toBe('Read ×2 · Edit · Bash!')
 })

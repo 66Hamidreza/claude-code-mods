@@ -128,8 +128,8 @@ with tempfile.TemporaryDirectory() as home:
  assert not (sessions/'old.json').exists()
  stale=m.window('x','test',87,now-1,now,123,90)
  assert stale['usedPct']==87 and stale['stale'] is True and stale['asOf']==123 and stale['label']=='90-minute window',stale
- assert stale['resetAt']==int((now-1)*1000) and stale['rolledOver'] is True,stale
- fresh=m.window('x','test',40,now+1,now)
+ assert stale['resetAt'] is None and stale['rolledOver'] is False and stale['resetPending'] is True,stale
+ fresh=m.window('x','test',40,now+1,now,int(now*1000))
  assert fresh['stale'] is False and fresh['rolledOver'] is False and fresh['resetAt'] is None
  assert m.duration_label(120,'x')=='2-hour window'; assert m.duration_label(4320,'x')=='3-day window'
  m.HOME=home
@@ -139,7 +139,7 @@ with tempfile.TemporaryDirectory() as home:
   'secondary':{'window_minutes':4320,'used_percent':20,'resets_at':now+100}}}})+'\n')
  usage=m.codex_usage(now); first,second=usage['windows']
  assert first['usedPct']==73 and first['stale'] is True and first['asOf']==usage['asOf']
- assert first['rolledOver'] is True and first['resetAt']==int((now-1)*1000),first
+ assert first['rolledOver'] is False and first['resetAt'] is None and first['resetPending'] is True,first
  assert (first['label'],second['label'])==('2-hour window','3-day window'),usage
  m.usage_body=lambda:json.dumps({'codex':usage}).encode()
  server=m.http.server.ThreadingHTTPServer(('127.0.0.1',0),functools.partial(m.Handler,directory=home))
@@ -244,19 +244,18 @@ test('session order ignores activity timestamp churn and debounces severity chan
   expect(run()).toBe(true)
 })
 
-test('rollovers persist per-window epochs and notify once through the opt-in queue', () => {
-  const run = new Function(webHelpers(['finiteNumber', 'validDate', 'windowReset', 'windowLabel', 'clock24', 'datedClock', 'observeResets']) + `
-    var resetSeen={},resetLastSeen={},resetDismissed={},usageOpenedAt=0,resetNotices=new Map(),resetTitlePending=false,pendingAlerts=new Map(),alertMode='desktop',store={set:()=>{}},usageData={codex:{windows:[{id:'five_hour',usedPct:55,resetsAt:10}]}};
-    observeResets(9000);if(resetNotices.size)throw Error('Future reset announced');
-    observeResets(10000);if(resetNotices.size!==1||pendingAlerts.size!==1)throw Error('Rollover not announced');
-    if(!resetTitlePending||!resetNotices.get('codex|five_hour').text.includes('Codex 5-hour window reset ✓'))throw Error('Notice details');
-    pendingAlerts.clear();resetNotices.clear();observeResets(11000);
-    if(pendingAlerts.size||resetNotices.size)throw Error('Reset repeated after dismissal/reload');
-    resetSeen={'codex|five_hour':{epoch:20000,announced:10000}};
-    usageData.codex.windows[0].resetsAt=40;observeResets(30000);
-    if(resetNotices.get('codex|five_hour').epoch!==20000)throw Error('Reset since last visit missed');
-    pendingAlerts.clear();alertMode='off';usageData.codex.windows[0].resetsAt=25;observeResets(30000);
-    if(pendingAlerts.size)throw Error('Notification sent while Off');
+test('deadlines alone never announce resets; observed resets notify once per window', () => {
+  const run = new Function(webHelpers(['finiteNumber', 'validDate', 'windowReset', 'windowLabel', 'clock24', 'datedClock', 'resetEvents', 'resetEventId', 'resetWindowLabel', 'resetUsed', 'resetDescription', 'observeResets']) + `
+    var resetLastSeen={},resetDismissed={},usageOpenedAt=0,resetNotices=new Map(),resetTitlePending=false,pendingAlerts=new Map(),alertMode='desktop',store={set:()=>{}},usageData={codex:{windows:[{id:'five_hour',usedPct:55,resetsAt:10}]}};
+    observeResets(9000);observeResets(10000);observeResets(30000000);
+    if(resetNotices.size||pendingAlerts.size)throw Error('Unobserved deadline announced');
+    usageData.codex.resets=['five_hour','weekly'].map(window=>({window,at:20000,kind:'early',fromPct:85,toPct:5}));
+    observeResets(30000);
+    if(resetNotices.size!==2||pendingAlerts.size!==2)throw Error('Observed windows not announced');
+    pendingAlerts.clear();resetNotices.clear();observeResets(40000);
+    if(pendingAlerts.size||resetNotices.size)throw Error('Reset repeated');
+    alertMode='off';usageData.codex.resets=[{window:'five_hour',at:40000,kind:'scheduled',fromPct:85,toPct:5}];observeResets(50000);
+    if(pendingAlerts.size||resetNotices.size!==1)throw Error('Opt-in queue ignored');
     return true;
   `)
   expect(run()).toBe(true)

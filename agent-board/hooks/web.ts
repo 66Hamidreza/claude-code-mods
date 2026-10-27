@@ -179,7 +179,7 @@ svg.edges { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
 .reset-clock { color: #b6c2d1; font: 10px/1.7 var(--mono); }
 .reset-note { color: var(--run); font-size: 10px; }
 .usage-foot { display: flex; flex-wrap: wrap; gap: 4px 12px; justify-content: space-between; padding: 9px 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: 10px; }
-.reset-credits { margin-top: 8px; font-size: 12px; color: var(--good, #7ee787); }
+.reset-credits { margin: 8px 12px 0; font-size: 12px; color: var(--good, #7ee787); }
 .usage-expiry.warning, .usage-asof.warning { color: var(--wait); } .usage-expiry.danger { color: var(--fail); }
 .usage-empty { min-height: 121px; display: flex; align-items: center; padding: 18px; color: var(--muted); font-size: 12px; }
 .usage-card.unavailable .provider-mark { border-color: var(--done); }
@@ -338,7 +338,7 @@ var acknowledged = store.get('acknowledged', {}), issueEpisodes = store.get('iss
 var agentControls = {}, rowLimits = {}, filter = 'all', all = [], visibleSessions = [], infos = new Map(), lastGood = new Map(), confirmedMissing = new Map();
 var usageData = null, usageBusy = false, usageSamples = new Map(), worstRemaining = null;
 var dedupeState = new Map(), sortState = new Map(), stableOrder = [], sortMode = null;
-var resetSeen = store.get('usageResetSeen', {}), resetNotices = new Map(), resetTitlePending = false;
+var resetNotices = new Map(), resetTitlePending = false;
 var resetDismissed = store.get('usageResetDismissed', {}), resetLastSeen = store.get('usageResetLastSeen', {}), usageOpenedAt = Date.now();
 function finiteNumber(value) { return typeof value === 'number' && Number.isFinite(value); }
 function validDate(value) { return finiteNumber(value) && !isNaN(new Date(value).getTime()); }
@@ -425,8 +425,9 @@ function filterMatch(s, info, value) {
   if (!activeSession(s, info)) return false;
   return value === 'all' || value === 'attn' && info.issues.length > 0 || value === 'run' && info.run > 0 && !info.ended || value === 'codex' && info.codex.length > 0;
 }
+function isDismissed(s) { return dismissed[s.sessionId] !== undefined && stamp(s) <= dismissed[s.sessionId] + 15000 && !pinned[s.sessionId]; }
 function matches(s, info) {
-  if (dismissed[s.sessionId] !== undefined && stamp(s) <= dismissed[s.sessionId] + 15000 && !pinned[s.sessionId]) return false;
+  if (isDismissed(s)) return false;
   var q = document.getElementById('q').value.trim().toLowerCase();
   var hay = [sessionName(s), s.cwd || '', info.issues.map(function (x) { return x.kind; }).join(' '), info.run ? 'running working' : '', info.codex.length ? 'codex' : '', info.ended ? 'ended' : ''].join(' ').toLowerCase();
   return (!q || hay.includes(q)) && filterMatch(s, info, filter);
@@ -455,6 +456,10 @@ function orderedSessions(live, now, mode) {
 function windowReset(w) {
   var at = finiteNumber(w.resetAt) ? w.resetAt : finiteNumber(w.resetsAt) ? w.resetsAt * 1000 : null;
   return validDate(at) ? at : null;
+}
+function windowStale(w, data, now) {
+  var at = windowReset(w), seen = validDate(w.asOf) ? w.asOf : data && data.asOf;
+  return !!(w.stale || data && data.stale || !validDate(seen) || seen > now || now - seen >= 1800000 || at !== null && at <= now);
 }
 function windowLabel(w) { return w.label || (w.id === 'five_hour' ? '5-hour window' : w.id === 'seven_day' ? '7-day window' : w.id ? String(w.id).replace(/_/g, ' ') : 'Reported window'); }
 function clock24(at) { return new Date(at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }); }
@@ -501,21 +506,8 @@ function observeResets(now) {
       });
       return;
     }
-    data.windows.forEach(function (w, index) {
-      if (!w || !finiteNumber(w.usedPct)) return;
-      var at = windowReset(w); if (at === null) return;
-      var key = provider + '|' + (w.id || w.label || index), old = resetSeen[key] || {}, epoch = at <= now ? at : old.epoch && old.epoch <= now ? old.epoch : null;
-      var announced = old.announced || 0;
-      if (epoch !== null && epoch > announced) {
-        var message = (provider === 'claude' ? 'Claude' : 'Codex') + ' ' + windowLabel(w) + ' reset ✓';
-        resetNotices.set(key, { provider: provider, text: message, epoch: epoch }); resetTitlePending = true; announced = epoch;
-        if (alertMode === 'desktop') pendingAlerts.set('usage-reset:' + key, { reset: true, key: key, epoch: epoch, name: message, sid: 'usage-' + provider, messages: ['Window reset at ' + datedClock(epoch, now)] });
-        changed = true;
-      }
-      if (old.epoch !== at || old.announced !== announced) { resetSeen[key] = { epoch: at, announced: announced }; changed = true; }
-    });
   });
-  if (changed) { store.set('usageResetSeen', resetSeen); store.set('usageResetLastSeen', resetLastSeen); }
+  if (changed) store.set('usageResetLastSeen', resetLastSeen);
   return changed;
 }
 function renderResetNotices() {
@@ -526,7 +518,7 @@ window.addEventListener('focus', function () { resetTitlePending = false; update
 function sampleUsage(provider, data) {
   if (!data || !Array.isArray(data.windows)) return;
   data.windows.forEach(function (w, index) {
-    if (!w || w.stale || data.stale || !finiteNumber(w.usedPct)) return;
+    if (!w || windowStale(w, data, serverNow()) || !finiteNumber(w.usedPct)) return;
     var key = provider + '|' + (w.id || w.label || index), at = w.asOf || data.asOf || serverNow();
     var samples = usageSamples.get(key) || [], last = samples[samples.length - 1];
     if (last && (w.resetsAt !== last.reset || w.usedPct < last.used)) samples = [];
@@ -536,7 +528,7 @@ function sampleUsage(provider, data) {
   });
 }
 function projection(provider, w, index, left) {
-  if (left === null) return '';
+  if (left === null || windowStale(w, null, serverNow())) return '';
   var samples = usageSamples.get(provider + '|' + (w.id || w.label || index)) || [];
   if (samples.length < 2) return '';
   var first = samples[0], last = samples[samples.length - 1], rate = (last.used - first.used) / (last.at - first.at);
@@ -548,25 +540,25 @@ function projection(provider, w, index, left) {
 function usageCard(provider, data) {
   var now = serverNow(), name = provider === 'claude' ? 'Claude' : 'Codex', available = data && Array.isArray(data.windows);
   var windows = available ? data.windows.filter(function (w) { return w && typeof w === 'object'; }) : [];
-  var reset = windows.some(function (w) { var at = windowReset(w); return finiteNumber(w.usedPct) && at !== null && at <= now; });
-  var observed = windows.some(function (w) { return finiteNumber(w.usedPct); });
-  var limited = windows.some(function (w) { var at = windowReset(w); return w.usedPct >= 100 && (at === null || at > now); });
+  var stale = windows.some(function (w) { return windowStale(w, data, now); });
+  var observed = windows.some(function (w) { return finiteNumber(w.usedPct) && !windowStale(w, data, now); });
+  var limited = windows.some(function (w) { return w.usedPct >= 100 && !windowStale(w, data, now); });
   var marker = Array.from(resetNotices.values()).some(function (n) { return n.provider === provider; });
   var card = document.getElementById('usage-' + provider);
   var events = resetEvents(data), historyOpen = card.querySelector('.usage-history[open]');
   card.classList.toggle('unavailable', !available); card.classList.toggle('limited', limited);
-  var state = !available ? 'Usage unavailable' : limited ? 'Limit reached' : reset ? 'Reset ✓' : observed ? 'Available' : 'Unknown';
-  var html = '<div class="usage-head"><span class="provider-mark" aria-hidden="true"></span><h2>' + name + '</h2><span class="plan">' + esc(available && data.plan || 'Plan unknown') + '</span>' + (marker ? '<span class="reset-marker" title="A usage window reset">✓</span>' : '') + '<span class="usage-state' + (limited ? ' danger' : reset ? ' good' : '') + '">' + state + '</span></div>';
+  var state = !available ? 'Usage unavailable' : limited ? 'Limit reached' : stale ? 'Old reading' : observed ? 'Available' : 'Unknown';
+  var html = '<div class="usage-head"><span class="provider-mark" aria-hidden="true"></span><h2>' + name + '</h2><span class="plan">' + esc(available && data.plan || 'Plan unknown') + '</span>' + (marker ? '<span class="reset-marker" title="A usage window reset">✓</span>' : '') + '<span class="usage-state' + (limited ? ' danger' : '') + '">' + state + '</span></div>';
   if (!available) html += '<div class="usage-empty">Usage unavailable. Retrying every 15 seconds.</div>';
   else if (!windows.length) html += '<div class="usage-empty">No usage windows reported.</div>';
   else html += '<div class="usage-windows">' + windows.map(function (w, index) {
     var known = finiteNumber(w.usedPct), used = known ? Math.max(0, Math.min(100, w.usedPct)) : null;
-    var at = windowReset(w), rolled = known && at !== null && at <= now, left = rolled ? 100 : known ? 100 - used : null;
-    var pct = rolled ? 'Reset ✓' : left === null ? 'Unknown' : String(Math.round(left * 10) / 10) + '%';
+    var at = windowReset(w), old = windowStale(w, data, now), left = known && !old ? 100 - used : null;
+    var pct = left === null ? 'Unknown' : String(Math.round(left * 10) / 10) + '%';
     if (left !== null) worstRemaining = worstRemaining === null ? left : Math.min(worstRemaining, left);
     var color = left === null ? 'var(--done)' : left > 40 ? 'var(--run)' : left >= 15 ? 'var(--wait)' : 'var(--fail)', label = windowLabel(w);
     var latest = events.find(function (e) { return e.window === w.id; });
-    return '<div class="usage-window' + (rolled ? ' reset' : left === null ? ' unknown' : '') + '" style="--gauge:' + color + ';--left:' + (left === null ? 0 : left) + '%"><span class="window-label">' + esc(label) + '</span>' + (latest && latest.kind === 'early' ? '<span class="early-reset" title="' + esc(resetDescription(latest)) + '">Early reset</span>' : '') + '<div class="remaining">' + pct + '<small>' + (left === null ? 'No observation yet' : rolled ? '100% remaining' : 'remaining') + '</small></div><div class="usage-gauge" role="img" aria-label="' + esc(label + ': ' + (left === null ? 'remaining unknown' : left + '% remaining')) + '"><i></i></div><div class="window-meta"><span class="' + (rolled ? 'reset-history' : '') + '">' + (used === null ? 'No usage reading' : rolled ? 'last seen ' + used + '% used before reset' : used + '% used') + '</span></div><span class="reset-clock" data-reset="' + (at === null ? '' : at) + '"></span>' + (rolled ? '<span class="reset-note" data-reset-note="' + at + '"></span>' : projection(provider, w, index, left)) + '</div>';
+    return '<div class="usage-window' + (left === null ? ' unknown' : '') + '"' + (!old ? ' data-fresh-until="' + Math.min(at === null ? Infinity : at, (w.asOf || data.asOf) + 1800000) + '"' : '') + ' style="--gauge:' + color + ';--left:' + (left === null ? 0 : left) + '%"><span class="window-label">' + esc(label) + '</span>' + (latest && latest.kind === 'early' ? '<span class="early-reset" title="' + esc(resetDescription(latest)) + '">Early reset</span>' : '') + '<div class="remaining">' + pct + '<small>' + (left === null ? 'Current usage unknown' : 'remaining') + '</small></div><div class="usage-gauge" role="img" aria-label="' + esc(label + ': ' + (left === null ? 'remaining unknown' : left + '% remaining')) + '"><i></i></div><div class="window-meta"><span class="' + (old ? 'reset-history' : '') + '">' + (used === null ? 'No usage reading' : old ? 'Last observed ' + used + '% used' : used + '% used') + '</span></div><span class="reset-clock" data-reset="' + (at === null ? '' : at) + '"></span>' + (at !== null && at <= now ? '<span class="reset-note">Scheduled reset passed · awaiting a new usage reading</span>' : projection(provider, w, index, left)) + '<span class="usage-asof" data-asof="' + (validDate(w.asOf) ? w.asOf : validDate(data.asOf) ? data.asOf : '') + '"></span>' + '</div>';
   }).join('') + '</div>';
   var credits = available && data.resetCredits && finiteNumber(data.resetCredits.available) ? data.resetCredits : null;
   if (credits && credits.available > 0) html += '<div class="reset-credits"><strong>' + credits.available + ' reset' + (credits.available === 1 ? '' : 's') + ' available</strong> · ' + (Array.isArray(credits.items) ? credits.items.filter(function (c) { return validDate(c.expiresAt); }).map(function (c) { return esc('expires ' + new Date(c.expiresAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })); }).join(', ') : '') + '</div>';
@@ -593,19 +585,16 @@ async function pollUsage() {
   finally { clearTimeout(timeout); usageBusy = false; renderUsage(); }
 }
 function tickUsage(now) {
-  // A window can roll over between the 15-second usage polls.
+  // Expire observations between polls without inventing a confirmed reset.
+  if (Array.from(document.querySelectorAll('[data-fresh-until]')).some(function (el) { return now >= Number(el.dataset.freshUntil); })) { renderUsage(); return; }
   if (observeResets(now)) { renderUsage(); return; }
   document.querySelectorAll('[data-reset]').forEach(function (el) {
     var hasAt = el.dataset.reset !== '', at = Number(el.dataset.reset), past = at <= now;
-    textIfChanged(el, !hasAt ? 'Reset time unavailable' : (past ? 'Reset ' : 'Resets ') + datedClock(at, now) + ' · ' + (past ? relativeTime(now - at) + ' ago' : 'in ' + relativeTime(at - now)));
-  });
-  document.querySelectorAll('[data-reset-note]').forEach(function (el) {
-    var at = Number(el.dataset.resetNote);
-    textIfChanged(el, 'Window reset at ' + (now - at > 86400000 ? datedClock(at, now) : clock24(at)) + ' (' + relativeTime(now - at) + ' ago) · new window starts at your next message');
+    textIfChanged(el, !hasAt ? 'Reset time unavailable' : (past ? 'Scheduled reset ' : 'Resets ') + datedClock(at, now) + ' · ' + (past ? relativeTime(now - at) + ' ago' : 'in ' + relativeTime(at - now)));
   });
   document.querySelectorAll('[data-asof]').forEach(function (el) {
     var hasAt = el.dataset.asof !== '', at = Number(el.dataset.asof), stale = hasAt && now - at > 1800000;
-    var tooltip = 'Claude data refreshes only while a T3 Claude session runs. Codex data comes from the newest Codex log.';
+    var tooltip = 'Claude data refreshes only while a T3 Claude session runs. Codex data comes from the latest timestamped usage observation across recent Codex logs.';
     var text = hasAt ? 'Last usage reading ' + (now - at > 86400000 ? datedClock(at, now) : clock24(at)) + ' · ' + Math.floor(Math.max(0, now - at) / 3600000) + 'h ' + Math.floor(Math.max(0, now - at) / 60000) % 60 + 'm ago' : 'Last usage reading unavailable';
     setHtml(el, esc(text) + (stale ? ' <span class="reading-old" title="' + tooltip + '">old reading</span>' : '')); el.title = tooltip;
   });
@@ -704,10 +693,18 @@ function peerBadges(s, now) {
 }
 function order(agents) {
   var byId = new Map(agents.map(function (a) { return [a.id, a]; })), kids = new Map(), out = [], visited = new Set();
-  agents.forEach(function (a) { if (a.parentId && a.parentId !== a.id && byId.has(a.parentId)) kids.set(a.parentId, (kids.get(a.parentId) || []).concat(a)); });
+  var main = agents.find(function (a) { return a.kind === 'main' || a.id === 'main'; });
+  function newest(a, b) { return (b.startedAt || 0) - (a.startedAt || 0); }
+  agents.forEach(function (a) {
+    if (a === main) return;
+    var parent = a.parentId && a.parentId !== a.id && byId.has(a.parentId) ? a.parentId : main && main.id;
+    if (parent) kids.set(parent, (kids.get(parent) || []).concat(a));
+  });
+  kids.forEach(function (siblings) { siblings.sort(newest); });
   function walk(a, d, parent) { if (visited.has(a.id)) return; visited.add(a.id); out.push({ a: a, d: Math.min(d, 8), parent: parent }); (kids.get(a.id) || []).forEach(function (k) { walk(k, d + 1, a.id); }); }
-  agents.filter(function (a) { return !a.parentId || !byId.has(a.parentId); }).forEach(function (a) { walk(a, 0, null); });
-  agents.forEach(function (a) { walk(a, 0, null); });
+  if (main) walk(main, 0, null);
+  agents.filter(function (a) { return !a.parentId || a.parentId === a.id || !byId.has(a.parentId); }).sort(newest).forEach(function (a) { walk(a, 0, null); });
+  agents.slice().sort(newest).forEach(function (a) { walk(a, 0, null); });
   return out;
 }
 function agentView(s, info, best, now) {
@@ -809,7 +806,7 @@ function setTree(tree, html) {
 }
 function renderFilters(infos, live) {
   var c = { all: 0, attn: 0, run: 0, codex: 0, ended: 0 };
-  live.forEach(function (s) { var i = infos.get(s.sessionId); Object.keys(c).forEach(function (key) { if (filterMatch(s, i, key)) c[key]++; }); });
+  live.forEach(function (s) { if (isDismissed(s)) return; var i = infos.get(s.sessionId); Object.keys(c).forEach(function (key) { if (filterMatch(s, i, key)) c[key]++; }); });
   setHtml(document.getElementById('filters'), [['all', 'All'], ['attn', 'Needs attention'], ['run', 'Running'], ['codex', 'Codex'], ['ended', 'Ended']].map(function (n) { return '<button class="f" data-f="' + n[0] + '" aria-pressed="' + (filter === n[0]) + '" title="Filter sessions: ' + n[1] + '">' + n[1] + ' <b>' + c[n[0]] + '</b></button>'; }).join(''));
 }
 var attentionExpanded = false;

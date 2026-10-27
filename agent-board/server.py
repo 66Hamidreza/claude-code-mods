@@ -9,6 +9,7 @@ secret is ever returned or written.
 """
 import argparse
 import base64
+from datetime import datetime, timezone
 import glob
 import http.server
 import importlib.util
@@ -92,8 +93,9 @@ def tail_lines(path, size=TAIL):
 
 def iso_ms(text):
     try:
-        return int(time.mktime(time.strptime(text[:19], '%Y-%m-%dT%H:%M:%S'))) * 1000 - time.timezone * 1000
-    except ValueError:
+        stamp = datetime.fromisoformat(text.replace('Z', '+00:00'))
+        return int(stamp.replace(tzinfo=timezone.utc).timestamp() * 1000) if stamp.tzinfo is None else int(stamp.timestamp() * 1000)
+    except (ValueError, TypeError, AttributeError):
         return None
 
 
@@ -124,10 +126,11 @@ def window(wid, label, used, resets_at, now_s, as_of=None, minutes=None):
         resets_at = parsed / 1000 if parsed is not None else None
     if isinstance(resets_at, (int, float)) and resets_at > 10_000_000_000:
         resets_at /= 1000
-    stale = resets_at is not None and resets_at <= now_s
+    expired = resets_at is not None and resets_at <= now_s
+    stale = expired or not finite_number(as_of) or as_of > now_s * 1000 or now_s * 1000 - as_of >= 1800000
     return {'id': wid, 'label': duration_label(minutes, label), 'usedPct': round(used, 1),
             'resetsAt': resets_at, 'stale': stale, 'asOf': as_of, 'windowMinutes': minutes,
-            'resetAt': int(resets_at * 1000) if stale else None, 'rolledOver': stale}
+            'resetAt': None, 'rolledOver': False, 'resetPending': expired}
 
 
 def claude_usage(now_s):
@@ -142,31 +145,18 @@ def claude_usage(now_s):
         for line in reversed(lines):
             if 'rate_limit_info' not in line:
                 continue
-            match = re.search(r'"rate_limit_info":(\{.*?\})(?:,"|\}|$)', line)
-            stamp = iso_ms(line[1:25]) if line.startswith('[') else None
+            match = re.search(r'"rate_limit_info"\s*:\s*', line)
+            stamp = iso_ms(line[1:line.find(']')]) if line.startswith('[') and ']' in line else None
             info = None
             if match:
                 try:
-                    info = json.loads(match.group(1))
+                    info, _ = json.JSONDecoder().raw_decode(line[match.end():])
                 except ValueError:
                     info = None
-            if info is None:
-                # Nested unifiedWindows objects: take everything up to the closing of rate_limit_info.
-                start = line.find('"rate_limit_info":') + len('"rate_limit_info":')
-                depth = 0
-                for i in range(start, len(line)):
-                    depth += line[i] == '{'
-                    depth -= line[i] == '}'
-                    if depth == 0:
-                        try:
-                            info = json.loads(line[start:i + 1])
-                        except ValueError:
-                            info = None
-                        break
-            if not info:
+            if not isinstance(info, dict):
                 continue
             for wid, w in (info.get('unifiedWindows') or {}).items():
-                if wid in labels and (wid not in seen or (stamp or 0) > seen[wid][0]):
+                if wid in labels and isinstance(w, dict) and finite_number(w.get('utilization')) and (wid not in seen or (stamp or 0) > seen[wid][0]):
                     seen[wid] = (stamp or 0, w.get('utilization', 0) * 100, w.get('resetsAt'), duration_minutes(w))
             kind = info.get('rateLimitType')
             if info.get('status') == 'rejected' and kind in labels and (kind not in seen or (stamp or 0) > seen[kind][0]):
@@ -184,6 +174,8 @@ def claude_usage(now_s):
         status = 'rejected'
     elif status != 'rejected':
         status = 'allowed' if windows else 'unknown'
+    if not any(not w['stale'] for w in windows):
+        status = 'unknown'
     # A Claude subscription end date is not stored locally.
     return {'plan': plan, 'asOf': as_of, 'windows': windows, 'status': status, 'expiresAt': None}
 
@@ -230,15 +222,13 @@ def codex_usage(now_s):
             except ValueError:
                 continue
             found = (event.get('payload') or {}).get('rate_limits')
-            if found and found.get('primary'):
-                limits, as_of = found, iso_ms(event.get('timestamp', '')) or int(os.path.getmtime(path) * 1000)
-                break
-        if limits:
-            break
+            stamp = iso_ms(event.get('timestamp', ''))
+            if isinstance(found, dict) and found.get('primary') and stamp is not None and (as_of is None or stamp > as_of):
+                limits, as_of = found, stamp
     windows = []
     for key in ('primary', 'secondary'):
         w = (limits or {}).get(key)
-        if not w:
+        if not isinstance(w, dict) or not finite_number(w.get('used_percent')):
             continue
         minutes = duration_minutes(w)
         wid = 'five_hour' if minutes == 300 else 'weekly' if minutes == 10080 else key
@@ -254,6 +244,8 @@ def codex_usage(now_s):
         pass
     reached = (limits or {}).get('rate_limit_reached_type')
     status = 'limited' if reached or any(w['usedPct'] >= 100 and not w['stale'] for w in windows) else 'allowed' if windows else 'unknown'
+    if not any(not w['stale'] for w in windows):
+        status = 'unknown'
     return {'plan': (limits or {}).get('plan_type'), 'credits': (limits or {}).get('credits'),
             'asOf': as_of, 'windows': windows, 'status': status, 'expiresAt': expires,
             'resetCredits': codex_reset_credits(now_s)}
@@ -277,12 +269,11 @@ def detect_resets(wid, readings):
     for previous, current in zip(readings, readings[1:]):
         old, new = previous.get('resetsAt'), current.get('resetsAt')
         before, after = previous['usedPct'], current['usedPct']
-        if old is None:
+        if old is None or current['at'] <= previous['at']:
             continue
         scheduled = new is not None and new > old and old * 1000 <= current['at']
         dropped = before - after >= 10 or after < before / 2
-        weekly_shift = (wid in ('weekly', 'seven_day') or current.get('windowMinutes') == 10080) and new is not None and abs(new - old) > 3600
-        if scheduled or (old * 1000 > current['at'] and dropped) or weekly_shift:
+        if scheduled or (old * 1000 > current['at'] and dropped):
             events.append({'window': wid, 'at': current['at'], 'kind': 'scheduled' if scheduled else 'early',
                            'fromPct': before, 'toPct': after, 'prevResetsAt': old})
     return events
@@ -295,9 +286,10 @@ def record_usage_history(body, path=None):
         history = json.loads(path.read_text(encoding='utf-8'))
     except (OSError, ValueError):
         history = {}
-    if not isinstance(history, dict):
-        history = {}
-    changed = False
+    # Poll-time histories cannot establish when a provider observation happened.
+    changed = not isinstance(history, dict) or history.get('version') != 2
+    if changed:
+        history = {'version': 2}
     for provider in ('claude', 'codex'):
         data = body[provider]
         saved = history.get(provider)
@@ -312,11 +304,21 @@ def record_usage_history(body, path=None):
             if not isinstance(wid, str) or not finite_number(w.get('usedPct')):
                 continue
             readings = clean_readings(windows.get(wid))
+            observed_at = w.get('asOf', data.get('asOf'))
+            if not finite_number(observed_at) or observed_at > body['at']:
+                continue
+            if readings:
+                last_seen = readings[-1].get('lastSeenAt')
+                if observed_at <= (last_seen if finite_number(last_seen) else readings[-1]['at']):
+                    continue
             values = {key: w.get(key) for key in ('usedPct', 'resetsAt', 'windowMinutes')}
             if values['resetsAt'] is not None and not finite_number(values['resetsAt']):
                 continue
             if not readings or any(readings[-1].get(k) != v for k, v in values.items()):
-                readings.append(dict(values, at=body['at']))
+                readings.append(dict(values, at=observed_at))
+                changed = True
+            elif readings[-1].get('lastSeenAt') != observed_at:
+                readings[-1]['lastSeenAt'] = observed_at
                 changed = True
             windows[wid] = readings[-200:]
         # Include windows absent from this reading, so transient missing data keeps its history.

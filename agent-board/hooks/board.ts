@@ -163,22 +163,23 @@ export const fromAgentStatus = (status: string): NodeStatus =>
           ? 'done'
           : 'failed'
 
-// Depth-first order under the main node, so a flat list reads as a tree.
+// Newest siblings first; depth-first traversal keeps descendants with their parent.
 export const treeOrder = (agents: readonly AgentNode[]): { node: AgentNode; depth: number; isLast: boolean }[] => {
   const children = new Map<string, AgentNode[]>()
   const ids = new Set(agents.map(node => node.id))
+  const main = agents.find(node => node.kind === 'main')
   for (const node of agents) {
     if (node.kind === 'main') continue
-    const parent = node.parentId && ids.has(node.parentId) ? node.parentId : 'main'
+    const parent = node.parentId && ids.has(node.parentId) ? node.parentId : main?.id ?? 'main'
     children.set(parent, [...(children.get(parent) ?? []), node])
   }
+  for (const kids of children.values()) kids.sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0))
   const out: { node: AgentNode; depth: number; isLast: boolean }[] = []
   const walk = (node: AgentNode, depth: number, isLast: boolean) => {
     out.push({ node, depth, isLast })
     const kids = children.get(node.id) ?? []
     kids.forEach((kid, index) => walk(kid, depth + 1, index === kids.length - 1))
   }
-  const main = agents.find(node => node.kind === 'main')
   if (main) walk(main, 0, true)
 
   return out
