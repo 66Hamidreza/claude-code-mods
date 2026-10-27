@@ -1,4 +1,4 @@
-"""Read-only discovery of T3 Code main Codex threads, independent of Claude hooks."""
+"""Read-only discovery of T3 Codex mains and delegated children, without hooks."""
 import json
 import re
 import sqlite3
@@ -92,24 +92,78 @@ def parse_rollout(path):
     return info if info['originator'] == 'T3 Code' and info['threadId'] and not info['marked'] else None
 
 
-def child_native_ids(db):
+def t3_state(db):
+    """Read one consistent projection, never prompts or turn-item payloads."""
+    native_threads, children, threads, child_ids = {}, {}, {}, set()
     if not db.exists():
-        return set()
-    # Connections and queries never mutate T3 state. Include completed children too.
+        return native_threads, children, threads, child_ids
     with closing(sqlite3.connect(db.resolve().as_uri() + '?mode=ro', uri=True, timeout=2)) as c:
-        subs = list(c.execute('''select child_thread_id, provider_thread_id,
-            json_extract(payload_json, '$.nativeTaskRef.nativeId')
+        c.execute('begin')
+        for tid, title, parent, relationship, options in c.execute('''select thread_id, title,
+                json_extract(payload_json, '$.lineage.parentThreadId'),
+                json_extract(payload_json, '$.lineage.relationshipToParent'),
+                json_extract(payload_json, '$.modelSelection.options')
+                from orchestration_v2_projection_threads'''):
+            effort = next((str(o.get('value')) for o in json.loads(options or '[]')
+                           if o.get('id') in ('effort', 'reasoningEffort')), None)
+            threads[tid] = dict(threadId=tid, title=title, parentThreadId=parent, effort=effort,
+                                isChild=bool(parent and relationship == 'subagent'))
+        subs = list(c.execute('''select thread_id, subagent_id, child_thread_id, provider_thread_id,
+            origin, status, started_at, completed_at,
+            json_extract(payload_json, '$.nativeTaskRef.nativeId'),
+            json_extract(payload_json, '$.title'), json_extract(payload_json, '$.driver'),
+            json_extract(payload_json, '$.model'), substr(json_extract(payload_json, '$.result'), 1, 300)
             from orchestration_v2_projection_subagents'''))
-        child_threads = {r[0] for r in subs if r[0]}
-        providers = {r[1] for r in subs if r[1]}
-        native = {r[2] for r in subs if r[2]}
+        child_threads = {r[2] for r in subs if r[2]} | {tid for tid, t in threads.items() if t['isChild']}
+        providers = {r[3] for r in subs if r[3]}
+        child_ids.update(r[8] for r in subs if r[8])
         for provider, thread, nid in c.execute('''select provider_thread_id, thread_id,
                 json_extract(payload_json, '$.nativeThreadRef.nativeId')
-                from orchestration_v2_projection_provider_threads'''):
+                from orchestration_v2_projection_provider_threads order by updated_at'''):
+            if nid:
+                native_threads[nid] = thread
             if thread in child_threads or provider in providers:
                 if nid:
-                    native.add(nid)
-        return native
+                    child_ids.add(nid)
+        activity = dict(c.execute('''select thread_id, max(updated_at)
+            from orchestration_v2_projection_turn_items group by thread_id'''))
+        pending = {tid: (approvals or 0, inputs or 0) for tid, approvals, inputs in c.execute('''
+            select thread_id, pending_approval_count, pending_user_input_count from projection_threads''')}
+        for tid, subid, child, _, origin, status, started, completed, _, title, driver, model, result in subs:
+            if origin != 'app_owned':
+                continue
+            approvals, inputs = pending.get(child, (0, 0))
+            children.setdefault(tid, []).append(child_node(
+                subid, child, title, driver, model, status, started, completed,
+                activity.get(child), threads.get(child, {}).get('effort'), result, approvals, inputs))
+        for tid, t in threads.items():
+            t['approvals'], t['inputs'] = pending.get(tid, (0, 0))
+    return native_threads, children, threads, child_ids
+
+
+def child_node(subid, child, title, driver, model, status, started, completed,
+               activity, effort, result, approvals, inputs):
+    status = ('done' if status == 'completed' else 'failed' if status in (
+        'failed', 'cancelled', 'canceled', 'interrupted', 'error') else 'waiting' if status in (
+        'waiting', 'pending_approval', 'pending_input') else 'idle' if status == 'idle' else 'running')
+    over = status in ('done', 'failed')
+    if status == 'running' and approvals + inputs > 0:
+        status = 'waiting'
+    started_at = stamp(started)
+    ended_at = (stamp(completed) or stamp(activity) or started_at) if over else 0
+    at = max(started_at, stamp(activity), ended_at)
+    node = dict(id='t3-' + subid, parentId='main', kind='codex' if driver == 'codex' else 'agent',
+                label=title or model or 'T3 child', type=driver or 't3', model=model or '', status=status,
+                tools=0, errors=1 if status == 'failed' else 0, steps=0, turns=0, tokens=0,
+                startedAt=started_at, lastEventAt=at, activityAt=at, recent=[], health='ok',
+                phase='idle' if over else 'waiting-approval' if approvals else 'waiting-user' if inputs
+                else 'thinking' if status == 'running' else 'waiting-children' if status == 'waiting' else 'idle',
+                t3=dict(threadId=child or '', childThreadId=child, driver=driver or '', effort=effort, result=result or ''))
+    if over:
+        node['endedAt'] = ended_at
+    elif approvals:
+        node['approvalSince'] = at
+    return node
 
 
 class Scanner:
@@ -138,14 +192,14 @@ class Scanner:
                     continue
         self.cache = {p: (v[0], v[1]) for p, v in paths.items()}
         try:
-            children = child_native_ids(self.home / '.t3/userdata/statev2.sqlite')
-        except sqlite3.Error:
+            native_threads, children, threads, child_ids = t3_state(self.home / '.t3/userdata/statev2.sqlite')
+        except (sqlite3.Error, OSError, ValueError, TypeError, AttributeError):
             # Do not mislabel children as main threads while the T3 store is unavailable.
             return self.last_good
         self.seq += 1
         out = {}
         for _, info, mtime in paths.values():
-            if not info or info['threadId'] in children:
+            if not info or info['threadId'] in child_ids:
                 continue
             sid = 'codex-' + info['threadId']
             at = int(mtime * 1000)
@@ -165,7 +219,28 @@ class Scanner:
                             isEnded=done, standaloneCodex=True, stale=stale,
                             summary=dict(running=0 if done or stale else 1, waiting=0, failed=0, flagged=0, lastActivityAt=at),
                             agents=[agent], activity=[], events=[])
-            if sid not in out or at > out[sid]['updatedAt']:
-                out[sid] = snapshot
-        self.last_good = list(out.values())
+            tid = native_threads.get(info['threadId'])
+            thread = threads.get(tid)
+            if thread:
+                snapshot['t3'] = {k: thread[k] for k in ('threadId', 'title', 'parentThreadId')}
+                snapshot['title'] = thread['title'] or snapshot['title']
+                if thread['approvals'] or thread['inputs']:
+                    agent.update(status='waiting', phase='waiting-approval' if thread['approvals'] else 'waiting-user')
+                    agent.pop('endedAt', None)
+                    if thread['approvals']:
+                        agent['approvalSince'] = at
+                snapshot['agents'].extend(children.get(tid, []))
+                agents = snapshot['agents']
+                live = any(a['status'] in ('running', 'waiting') for a in agents)
+                snapshot.update(isEnded=done and not live, stale=stale and not live,
+                                updatedAt=max(a['activityAt'] for a in agents))
+                snapshot['summary'] = dict(running=sum(a['status'] == 'running' for a in agents),
+                                           waiting=sum(a['status'] == 'waiting' for a in agents),
+                                           failed=sum(a['status'] == 'failed' for a in agents), flagged=0,
+                                           lastActivityAt=snapshot['updatedAt'])
+            # A resumed provider can leave several native rollouts for one app thread.
+            key = tid or sid
+            if key not in out or at > out[key][0]:
+                out[key] = (at, snapshot)
+        self.last_good = [snapshot for _, snapshot in out.values()]
         return self.last_good

@@ -34,11 +34,15 @@ with tempfile.TemporaryDirectory() as home:
  for id in ('child','provider-child','native-child'): write(id,[start])
  db=root/'.t3/userdata/statev2.sqlite'; db.parent.mkdir(parents=True)
  c=sqlite3.connect(db)
- c.executescript('''create table orchestration_v2_projection_subagents(child_thread_id text,provider_thread_id text,payload_json text);
- create table orchestration_v2_projection_provider_threads(provider_thread_id text,thread_id text,payload_json text);''')
- c.executemany('insert into orchestration_v2_projection_subagents values (?,?,?)',[
+ c.executescript('''create table orchestration_v2_projection_subagents(child_thread_id text,provider_thread_id text,payload_json text,
+ thread_id text,subagent_id text,origin text,status text,started_at text,completed_at text);
+ create table orchestration_v2_projection_provider_threads(provider_thread_id text,thread_id text,payload_json text,updated_at text);
+ create table orchestration_v2_projection_threads(thread_id text,title text,payload_json text);
+ create table orchestration_v2_projection_turn_items(thread_id text,updated_at text);
+ create table projection_threads(thread_id text,pending_approval_count integer,pending_user_input_count integer);''')
+ c.executemany('insert into orchestration_v2_projection_subagents (child_thread_id,provider_thread_id,payload_json) values (?,?,?)',[
   ('app-child',None,'{}'),(None,'provider-2','{}'),(None,None,json.dumps({'nativeTaskRef':{'nativeId':'native-child'}}))])
- c.executemany('insert into orchestration_v2_projection_provider_threads values (?,?,?)',[
+ c.executemany('insert into orchestration_v2_projection_provider_threads (provider_thread_id,thread_id,payload_json) values (?,?,?)',[
   ('p1','app-child',json.dumps({'nativeThreadRef':{'nativeId':'child'}})),
   ('provider-2',None,json.dumps({'nativeThreadRef':{'nativeId':'provider-child'}})),
   ('main-provider','app-main',json.dumps({'nativeThreadRef':{'nativeId':'main'}}))])
@@ -56,7 +60,7 @@ with tempfile.TemporaryDirectory() as home:
  assert all(s['isEnded'] == (s['agents'][0]['status']=='done') for s in scanner.scan(now+302)); assert db.read_bytes()==before
  assert next(s for s in scanner.scan(now+302) if s['sessionId']=='codex-main')['stale'] is True
  m.parse_rollout=original
- c=sqlite3.connect(db); c.execute('insert into orchestration_v2_projection_subagents values (?,?,?)',('app-main',None,'{}')); c.commit(); c.close()
+ c=sqlite3.connect(db); c.execute('insert into orchestration_v2_projection_subagents (child_thread_id,provider_thread_id,payload_json) values (?,?,?)',('app-main',None,'{}')); c.commit(); c.close()
  assert 'codex-main' not in {s['sessionId'] for s in scanner.scan(now)}
  write('done',[start,done,start],age=-1)
  assert next(s for s in scanner.scan(now) if s['sessionId']=='codex-done')['agents'][0]['status']=='running'
@@ -70,6 +74,12 @@ test('standalone scan parses mains, excludes CX/children, applies freshness and 
   expect(ran.stderr).toBe('')
   expect(ran.status).toBe(0)
   expect(JSON.parse(ran.stdout).length).toBe(7)
+})
+
+test('standalone T3 projection includes delegated children with correct ownership and safe database failures', () => {
+  const ran = spawnSync('python3', ['-I', `${import.meta.dir}/../codex_standalone_test.py`], { encoding: 'utf8' })
+  expect(ran.status).toBe(0)
+  if (ran.status !== 0) throw new Error(ran.stderr)
 })
 
 test('server serves the same web template before a Claude session starts', () => {
@@ -186,7 +196,7 @@ test('T3 child dedupe requires five consecutive matching or missing polls', () =
   const run = new Function(webHelpers(['nodes', 'updateDedupe', 'dedupedSessions']) + `
     var lastGood=new Map(),dedupeState=new Map(),pinned={};
     var child={sessionId:'child',t3:{threadId:'c',parentThreadId:'p'},agents:[]};
-    var parent={sessionId:'parent',t3:{threadId:'p'},agents:[{id:'c'}]};
+    var parent={sessionId:'codex-main-native',standaloneCodex:true,t3:{threadId:'p'},agents:[{id:'main'},{id:'t3-task',parentId:'main',t3:{threadId:'c',childThreadId:'c'}}]};
     lastGood.set('child',child);lastGood.set('parent',parent);
     var pair=[parent,child], absent=[{...parent,agents:[]},child];
     function visible(){return dedupedSessions(pair).includes(child)}
