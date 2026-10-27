@@ -31,6 +31,10 @@ def pending(thread):
     r = one("select pending_approval_count + pending_user_input_count from projection_threads where thread_id = ?", thread)
     return int(r[0] or 0) if r else 0
 out["pending"] = pending(tid)
+def asks(thread):
+    r = one("select pending_approval_count, pending_user_input_count from projection_threads where thread_id = ?", thread)
+    return {"approvals": int(r[0] or 0), "inputs": int(r[1] or 0)} if r else {"approvals": 0, "inputs": 0}
+out.update(asks(tid))
 for sub_id, sub_payload in c.execute("select subagent_id, payload_json from orchestration_v2_projection_subagents where thread_id = ? and origin = 'app_owned' order by started_at", (tid,)):
     p = js(sub_payload)
     child = p.get("childThreadId")
@@ -48,7 +52,7 @@ for sub_id, sub_payload in c.execute("select subagent_id, payload_json from orch
     out["children"].append({
         "id": sub_id, "title": p.get("title") or "", "driver": p.get("driver") or "", "model": p.get("model") or "",
         "effort": effort, "status": p.get("status") or "", "startedAt": p.get("startedAt"), "completedAt": p.get("completedAt"),
-        "activityAt": activity, "result": (p.get("result") or "")[:300], "waiting": waiting,
+        "childThreadId": child, "activityAt": activity, "result": (p.get("result") or "")[:300], "waiting": waiting, **(asks(child) if child else {"approvals": 0, "inputs": 0}),
     })
 print(json.dumps(out))
 `
@@ -58,8 +62,11 @@ export type T3Scan = {
   title: string
   parentThreadId?: string | null
   pending: number
+  approvals?: number
+  inputs?: number
   children: {
     id: string
+    childThreadId?: string | null
     title: string
     driver: string
     model: string
@@ -70,13 +77,16 @@ export type T3Scan = {
     activityAt?: string | null
     result: string
     waiting: number
+    approvals?: number
+    inputs?: number
   }[]
 }
 
 export const t3Status = (status: string): NodeStatus =>
   status === 'completed' ? 'done'
     : status === 'failed' || status === 'cancelled' || status === 'canceled' || status === 'interrupted' || status === 'error' ? 'failed'
-    : 'running'
+    : status === 'waiting' || status === 'pending_approval' || status === 'pending_input' ? 'waiting'
+    : status === 'idle' ? 'idle' : 'running'
 
 const time = (value: string | null | undefined, fallback: number) => {
   const parsed = value ? Date.parse(value) : NaN
@@ -88,9 +98,9 @@ const time = (value: string | null | undefined, fallback: number) => {
 export const t3Nodes = (scan: T3Scan, now: number): AgentNode[] =>
   scan.children.map(child => {
     const status = t3Status(child.status)
-    const startedAt = time(child.startedAt, now)
-    const endedAt = status === 'running' ? undefined : time(child.completedAt, now)
-    const info: T3Info = { threadId: scan.threadId, driver: child.driver, effort: child.effort ?? undefined, result: child.result || undefined }
+    const startedAt = time(child.startedAt, 0)
+    const endedAt = status === 'done' || status === 'failed' ? time(child.completedAt, time(child.activityAt, startedAt)) : undefined
+    const info: T3Info = { threadId: child.childThreadId ?? '', childThreadId: child.childThreadId ?? undefined, driver: child.driver, effort: child.effort ?? undefined, result: child.result || undefined }
 
     return {
       id: `t3-${child.id}`,
@@ -99,7 +109,7 @@ export const t3Nodes = (scan: T3Scan, now: number): AgentNode[] =>
       label: child.title || child.model,
       type: child.driver || 't3',
       model: child.model,
-      status,
+      status: child.waiting > 0 && status === 'running' ? 'waiting' : status,
       tools: 0,
       errors: status === 'failed' ? 1 : 0,
       steps: 0,
@@ -107,8 +117,10 @@ export const t3Nodes = (scan: T3Scan, now: number): AgentNode[] =>
       tokens: 0,
       startedAt,
       endedAt,
-      lastEventAt: Math.max(startedAt, time(child.activityAt, startedAt)),
-      approvalSince: child.waiting > 0 ? time(child.activityAt, now) : undefined,
+      lastEventAt: Math.max(startedAt, time(child.activityAt, startedAt), endedAt ?? 0),
+      activityAt: Math.max(startedAt, time(child.activityAt, startedAt), endedAt ?? 0),
+      phase: status === 'done' || status === 'failed' ? 'idle' : (child.approvals ?? child.waiting) > 0 ? 'waiting-approval' : (child.inputs ?? 0) > 0 ? 'waiting-user' : status === 'running' ? 'thinking' : status === 'waiting' ? 'waiting-children' : 'idle',
+      approvalSince: (child.approvals ?? child.waiting) > 0 ? time(child.activityAt, now) : undefined,
       recent: [],
       health: 'ok',
       t3: info,

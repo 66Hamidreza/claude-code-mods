@@ -1,4 +1,4 @@
-import type { AgentNode, CodexInfo, Health, NodeStatus, PeerSession, RecentCall } from '../types'
+import type { AgentNode, CodexInfo, Health, NodeStatus, PeerSession, RecentCall, Phase } from '../types'
 
 export type OrchestrationAdvice = {
   at: number
@@ -203,16 +203,16 @@ export const recentSummary = (recent: readonly RecentCall[], max = 5) => {
 
 export const LIMITS = {
   // A call repeated this often in the last WINDOW calls is a loop.
-  repeat: 4,
-  window: 8,
-  failStreak: 3,
+  repeat: 6,
+  window: 10,
+  failStreak: 4,
   // Nothing from the model for this long, with no tool in flight.
-  silentMs: 4 * 60_000,
+  silentMs: 8 * 60_000,
   // One tool call in flight for this long.
-  longToolMs: 12 * 60_000,
+  longToolMs: 30 * 60_000,
   // A Codex rollout untouched for this long while not complete.
   codexSilentMs: 5 * 60_000,
-  approvalMs: 20_000,
+  approvalMs: 60_000,
 }
 
 // The most repeated entry and how often, among the last `window`.
@@ -232,45 +232,80 @@ const failStreak = (recent: readonly RecentCall[]) => {
   return streak
 }
 
+// Keep full, stable arguments for repeat detection; display text is deliberately clipped.
+export const toolSignature = (tool: string, input: Record<string, unknown>): string | undefined => {
+  const name = tool.split(/__|\./).pop()!.toLowerCase()
+  if (['read', 'grep', 'glob', 'task_status', 'list_agents', 'monitor'].includes(name)) return undefined
+  const command = typeof input.command === 'string' ? input.command : ''
+  if (command && commandSegments(command).filter(words => words.length).every(words =>
+    words[0] === 'git' && words[1] === 'status')) return undefined
+  const stable = (value: unknown): unknown => Array.isArray(value) ? value.map(stable)
+    : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => [k, stable(v)])) : value
+  const args = Object.fromEntries(Object.entries(input).filter(([key]) => !['tool', 'tool_use_id', 'agentId', 'sessionId'].includes(key)))
+  return `${tool} ${JSON.stringify(stable(args))}`
+}
+
+export const nodePhase = (node: AgentNode, hasRunningChildren = false): Phase => {
+  if (node.status === 'done' || node.status === 'failed') return 'idle'
+  if (node.approvalSince !== undefined && node.toolStartedAt === undefined) return 'waiting-approval'
+  if (node.toolStartedAt !== undefined) return 'tool'
+  if (hasRunningChildren || (node.status === 'waiting' && node.phase === 'waiting-children')) return 'waiting-children'
+  if (node.status === 'waiting' || (node.kind === 'main' && node.status === 'idle')) return 'waiting-user'
+  return node.status === 'running' ? 'thinking' : 'idle'
+}
+
 // Whether a node needs a look, and the few words that say why.
 export const assessHealth = (node: AgentNode, now: number, hasRunningChildren = false): { health: Health; note?: string } => {
   if (node.status === 'done' || node.status === 'failed') return { health: 'ok' }
-
-  if (node.kind === 'codex' && node.codex) {
-    const repeated = mostRepeated(node.codex.recentCommands)
-    if (repeated.count >= LIMITS.repeat) return { health: 'looping', note: `${clip(repeated.signature, 40)} ×${repeated.count}` }
-    const quiet = now - node.codex.activityAt
-    if (!node.codex.isComplete && quiet > LIMITS.codexSilentMs) return { health: 'stalled', note: `no Codex output for ${formatDuration(quiet)}` }
-
-    return { health: 'ok' }
-  }
-
-  if (node.approvalSince !== undefined && now - node.approvalSince > LIMITS.approvalMs) {
+  if (node.approvalSince !== undefined && node.toolStartedAt === undefined && now - node.approvalSince > LIMITS.approvalMs) {
     return { health: 'approval', note: `${node.tool ?? 'tool'} waiting for approval ${formatDuration(now - node.approvalSince)}` }
   }
-
-  const streak = failStreak(node.recent)
-  if (streak >= LIMITS.failStreak) return { health: 'looping', note: `${streak} failed calls in a row` }
-  const repeated = mostRepeated(node.recent.map(call => `${call.tool} ${call.detail}`))
-  if (repeated.count >= LIMITS.repeat) return { health: 'looping', note: `${clip(repeated.signature, 40)} ×${repeated.count}` }
-
+  // Old calls must not keep an idle/completed turn flagged as a loop.
   if (node.status === 'idle' || node.status === 'waiting') {
-    return hasRunningChildren ? { health: 'ok' } : { health: 'idle', note: `idle ${formatDuration(now - node.lastEventAt)}` }
+    return hasRunningChildren ? { health: 'ok' } : { health: 'idle', note: `idle ${formatDuration(now - (node.activityAt ?? node.lastEventAt))}` }
   }
-
-  if (node.toolStartedAt !== undefined) {
-    const inFlight = now - node.toolStartedAt
-    if (inFlight > LIMITS.longToolMs && !hasRunningChildren) {
-      return { health: 'stalled', note: `${node.tool ?? 'tool'} running ${formatDuration(inFlight)}` }
-    }
-
+  if (node.kind === 'codex' && node.codex) {
+    const repeated = mostRepeated(node.codex.recentCommands.slice(-LIMITS.window).filter(command => toolSignature('Bash', { command }) !== undefined))
+    if (repeated.count >= LIMITS.repeat) return { health: 'looping', note: `${clip(repeated.signature, 40)} ×${repeated.count}` }
+    const quiet = now - node.codex.activityAt
+    if (!node.codex.isComplete && quiet > LIMITS.codexSilentMs && !hasRunningChildren) return { health: 'stalled', note: `no Codex output for ${formatDuration(quiet)}` }
     return { health: 'ok' }
   }
-  const quiet = now - node.lastEventAt
-  if (quiet > LIMITS.silentMs && !hasRunningChildren) return { health: 'stalled', note: `no activity for ${formatDuration(quiet)}` }
-
+  const streak = failStreak(node.recent)
+  if (streak >= LIMITS.failStreak) return { health: 'looping', note: `${streak} failed calls in a row` }
+  const signatures = node.recent.slice(-LIMITS.window).filter(call => !call.polling && toolSignature(call.tool, { command: call.detail }) !== undefined)
+    .map(call => call.signature ?? `${call.tool} ${call.detail}`)
+  const repeated = mostRepeated(signatures)
+  if (repeated.count >= LIMITS.repeat) return { health: 'looping', note: `${clip(repeated.signature, 40)} ×${repeated.count}` }
+  if (node.toolStartedAt !== undefined) {
+    const inFlight = now - node.toolStartedAt
+    const name = (node.tool ?? '').split(/__|\./).pop()!.toLowerCase()
+    const exempt = ['monitor', 'task', 'agent', 'webfetch', 'sleep', 'delegate_task'].includes(name)
+      || (name === 'bash' && (node.toolBackground || /(?:^|[;&|]\s*)sleep\s/.test(node.detail ?? '')))
+    if (inFlight > LIMITS.longToolMs && !hasRunningChildren && !exempt) {
+      return { health: 'stalled', note: `${node.tool ?? 'tool'} running ${formatDuration(inFlight)}` }
+    }
+    return { health: 'ok' }
+  }
+  const quiet = now - (node.activityAt ?? node.lastEventAt)
+  const limit = node.kind === 'main' ? 5 * 60_000 : LIMITS.silentMs
+  if (quiet > limit && !hasRunningChildren) return { health: 'stalled', note: `no activity for ${formatDuration(quiet)}` }
   return { health: 'ok' }
 }
+
+export type SnapshotLink = {
+  id: string; at: number; kind: 'delegate' | 'result' | 'peer-msg'
+  from: { sessionId: string; nodeId?: string }
+  to: { sessionId?: string; nodeId?: string; peer?: string }
+  preview?: string
+}
+export const snapshotSummary = (agents: readonly AgentNode[]) => ({
+  running: agents.filter(n => n.status === 'running').length,
+  waiting: agents.filter(n => n.status === 'waiting' || n.phase?.startsWith('waiting-')).length,
+  failed: agents.filter(n => n.status === 'failed').length,
+  flagged: agents.filter(n => ['approval', 'looping', 'stalled'].includes(n.health)).length,
+  lastActivityAt: Math.max(0, ...agents.map(n => n.activityAt ?? n.lastEventAt)),
+})
 
 export type TaskNotification = { taskId?: string; toolUseId?: string; status?: string; summary?: string; outputFile?: string }
 
@@ -297,6 +332,10 @@ export type Snapshot = {
   t3?: { threadId: string; parentThreadId?: string | null }
   cwd: string
   updatedAt: number
+  seq?: number
+  lastError?: string
+  summary?: ReturnType<typeof snapshotSummary>
+  links?: SnapshotLink[]
   isEnded?: boolean
   agents: AgentNode[]
   advice?: OrchestrationAdvice

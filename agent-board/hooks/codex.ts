@@ -104,13 +104,13 @@ async function sortedDirs($: EngineInterface, path: string) {
     .sort()
 }
 
-// The newest two day folders of ~/.codex/sessions/YYYY/MM/DD.
+// Include old date folders: resumed logs retain their original path.
 async function dayDirs($: EngineInterface, root: string) {
-  const years = (await sortedDirs($, root)).slice(-2)
-  const months = (await Promise.all(years.map(year => sortedDirs($, year)))).flat().slice(-2)
+  const years = (await sortedDirs($, root))
+  const months = (await Promise.all(years.map(year => sortedDirs($, year)))).flat()
   const days = (await Promise.all(months.map(month => sortedDirs($, month)))).flat()
 
-  return days.slice(-2)
+  return days
 }
 
 // Every Codex exec run whose log moved since `since`, read again only when its file changed.
@@ -137,7 +137,9 @@ export async function scanCodex($: EngineInterface, since: number): Promise<Code
     const ran = await $.process
       .run(['python3', '-c', SCANNER, ...changed.map(file => file.path)], { timeoutMs: 20_000 })
       .catch(() => undefined)
-    const scanned: Scanned[] = ran?.exitCode === 0 ? JSON.parse(ran.stdout) : []
+    if (!ran || ran.exitCode !== 0) return files.flatMap(file => cache.get(file.path)?.info ?? [])
+    let scanned: Scanned[]
+    try { scanned = JSON.parse(ran.stdout) } catch { return files.flatMap(file => cache.get(file.path)?.info ?? []) }
     for (const file of changed) {
       const found = scanned.find(one => one.rollout === file.path)
       // Interactive Codex sessions are the person's own; the board follows exec runs.

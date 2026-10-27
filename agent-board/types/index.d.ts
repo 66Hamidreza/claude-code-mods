@@ -4,7 +4,8 @@ export type NodeStatus = 'running' | 'waiting' | 'idle' | 'done' | 'failed'
 // stalled: running but nothing happened for a while; looping: the same call over and over.
 export type Health = 'ok' | 'idle' | 'approval' | 'stalled' | 'looping'
 
-export type RecentCall = { tool: string; detail: string; at: number; ok?: boolean }
+export type RecentCall = { tool: string; detail: string; at: number; ok?: boolean; signature?: string; polling?: boolean }
+export type Phase = 'thinking' | 'tool' | 'waiting-user' | 'waiting-approval' | 'waiting-children' | 'idle'
 
 // What a Codex run's rollout log says about it, read live from ~/.codex/sessions.
 export type CodexInfo = {
@@ -28,7 +29,7 @@ export type CodexInfo = {
 }
 
 // A child T3 Code delegated through delegate_task, read from T3's own store.
-export type T3Info = { threadId: string; driver: string; effort?: string; result?: string }
+export type T3Info = { threadId: string; childThreadId?: string; driver: string; effort?: string; result?: string }
 
 export type AgentNode = {
   id: string
@@ -41,6 +42,7 @@ export type AgentNode = {
   tool?: string
   detail?: string
   toolStartedAt?: number
+  toolBackground?: boolean
   tools: number
   errors: number
   steps: number
@@ -49,6 +51,8 @@ export type AgentNode = {
   startedAt: number
   endedAt?: number
   lastEventAt: number
+  activityAt: number
+  phase: Phase
   approvalSince?: number
   recent: RecentCall[]
   health: Health

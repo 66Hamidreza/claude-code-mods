@@ -116,11 +116,13 @@ class Scanner:
     def __init__(self, home):
         self.home = Path(home)
         self.cache = {}
+        self.last_good = []
+        self.seq = 0
 
     def scan(self, now=None):
         now = time.time() if now is None else now
         root = self.home / '.codex/sessions'
-        days = sorted(p for p in root.glob('*/*/*') if p.is_dir())[-2:]
+        days = (p for p in root.glob('*/*/*') if p.is_dir())
         paths = {}
         for day in days:
             for path in day.glob('rollout-*.jsonl'):
@@ -139,25 +141,31 @@ class Scanner:
             children = child_native_ids(self.home / '.t3/userdata/statev2.sqlite')
         except sqlite3.Error:
             # Do not mislabel children as main threads while the T3 store is unavailable.
-            return []
+            return self.last_good
+        self.seq += 1
         out = {}
         for _, info, mtime in paths.values():
             if not info or info['threadId'] in children:
                 continue
             sid = 'codex-' + info['threadId']
             at = int(mtime * 1000)
-            done = info['complete'] or now - mtime > ACTIVE
+            done = info['complete']
+            stale = not done and now - mtime > ACTIVE
             name = Path(info['cwd']).name or 'Codex'
             agent = dict(id='main', kind='codex', label=name + ' · Codex', type='codex',
-                         model=info['model'] or 'codex', status='done' if done else 'running',
+                         model=info['model'] or 'codex', status='done' if done else 'idle' if stale else 'running',
                          detail=info['lastAction'] or 'working', tools=info['commands'], errors=0,
                          steps=0, turns=0, tokens=info['tokens'], startedAt=info['startedAt'] or at,
-                         lastEventAt=at, recent=[], health='ok')
+                         lastEventAt=at, activityAt=at, phase='idle' if done or stale else 'thinking',
+                         recent=[], health='idle' if stale else 'ok')
             if done:
                 agent['endedAt'] = at
             snapshot = dict(sessionId=sid, name=name, title=name + ' · Codex', cwd=info['cwd'],
-                            updatedAt=at, isEnded=done, standaloneCodex=True,
+                            updatedAt=at, seq=self.seq,
+                            isEnded=done, standaloneCodex=True, stale=stale,
+                            summary=dict(running=0 if done or stale else 1, waiting=0, failed=0, flagged=0, lastActivityAt=at),
                             agents=[agent], activity=[], events=[])
             if sid not in out or at > out[sid]['updatedAt']:
                 out[sid] = snapshot
-        return list(out.values())
+        self.last_good = list(out.values())
+        return self.last_good

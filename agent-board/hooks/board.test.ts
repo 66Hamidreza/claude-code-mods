@@ -5,6 +5,10 @@ import type { AgentNode, CodexInfo } from '../types'
 import { SCANNER } from './codex'
 import {
   assessHealth,
+  nodePhase,
+  snapshotSummary,
+  toolSignature,
+  LIMITS,
   compareAdvice,
   freshAdvice,
   adviceTitle,
@@ -43,6 +47,8 @@ const node = (id: string, parentId?: string, fields: Partial<AgentNode> = {}): A
   tokens: 0,
   startedAt: 0,
   lastEventAt: 0,
+  activityAt: 0,
+  phase: 'thinking',
   recent: [],
   health: 'ok',
   ...fields,
@@ -144,27 +150,27 @@ test('recent calls fold runs of one tool', async () => {
 })
 
 test('the same call over and over is a loop', async () => {
-  const repeated = Array.from({ length: 4 }, () => call('Bash', 'npm test'))
+  const repeated = Array.from({ length: 6 }, () => call('Bash', 'npm test'))
   expect(assessHealth(node('a', 'main', { recent: [call('Read', 'x'), ...repeated], lastEventAt: 0 }), 1000).health).toBe('looping')
-  const failing = [call('Edit', 'a', false), call('Edit', 'b', false), call('Bash', 'c', false)]
-  expect(assessHealth(node('a', 'main', { recent: failing }), 1000)).toEqual({ health: 'looping', note: '3 failed calls in a row' })
+  const failing = [call('Edit', 'a', false), call('Edit', 'b', false), call('Bash', 'c', false), call('Edit', 'd', false)]
+  expect(assessHealth(node('a', 'main', { recent: failing }), 1000)).toEqual({ health: 'looping', note: '4 failed calls in a row' })
   expect(assessHealth(node('a', 'main', { recent: [call('Read', 'a'), call('Read', 'b'), call('Read', 'c')] }), 1000).health).toBe('ok')
 })
 
 test('silence and long tools are stalls, unless a child is working', async () => {
   const quiet = node('a', 'main', { lastEventAt: 0 })
-  expect(assessHealth(quiet, 5 * 60_000).health).toBe('stalled')
+  expect(assessHealth(quiet, 9 * 60_000).health).toBe('stalled')
   expect(assessHealth(quiet, 60_000).health).toBe('ok')
   expect(assessHealth(quiet, 5 * 60_000, true).health).toBe('ok')
-  const longTool = node('a', 'main', { tool: 'Bash', toolStartedAt: 0, lastEventAt: 0 })
+  const longTool = node('a', 'main', { tool: 'Edit', toolStartedAt: 0, lastEventAt: 0 })
   expect(assessHealth(longTool, 5 * 60_000).health).toBe('ok')
-  expect(assessHealth(longTool, 13 * 60_000).note).toBe('Bash running 13m00s')
+  expect(assessHealth(longTool, 31 * 60_000).note).toBe('Edit running 31m00s')
 })
 
 test('idle main, open asks and finished nodes', async () => {
   expect(assessHealth(node('main', undefined, { status: 'idle', lastEventAt: 0 }), 90_000)).toEqual({ health: 'idle', note: 'idle 1m30s' })
   expect(assessHealth(node('main', undefined, { status: 'idle' }), 90_000, true).health).toBe('ok')
-  expect(assessHealth(node('a', 'main', { tool: 'Bash', approvalSince: 0, toolStartedAt: 0 }), 30_000).health).toBe('approval')
+  expect(assessHealth(node('a', 'main', { tool: 'Bash', approvalSince: 0 }), 61_000).health).toBe('approval')
   expect(assessHealth(node('a', 'main', { status: 'done', lastEventAt: 0 }), 10 * 60_000).health).toBe('ok')
 })
 
@@ -172,7 +178,7 @@ test('codex runs stall on a quiet log and loop on one command', async () => {
   const run = (fields: Partial<CodexInfo>) => node('c', 'main', { kind: 'codex', codex: codex(fields) })
   expect(assessHealth(run({ activityAt: 0 }), 6 * 60_000).health).toBe('stalled')
   expect(assessHealth(run({ activityAt: 0, isComplete: true }), 6 * 60_000).health).toBe('ok')
-  expect(assessHealth(run({ activityAt: 0, recentCommands: ['ls', 'npm test', 'npm test', 'npm test', 'npm test'] }), 1000).health).toBe('looping')
+  expect(assessHealth(run({ activityAt: 0, recentCommands: ['ls', ...Array(6).fill('npm test')] }), 1000).health).toBe('looping')
 })
 
 test('task notifications are read', async () => {
@@ -311,3 +317,130 @@ test('stale, absent, future and malformed advice is hidden', async () => {
   expect(freshAdvice({ ...advice, parts: [{}] }, adviceAt)).toBeUndefined()
   expect(freshAdvice({ ...advice, at: NaN }, adviceAt)).toBeUndefined()
 })
+
+
+test('health thresholds avoid ordinary pauses, reads, polling and finished-turn history', () => {
+  expect(LIMITS).toMatchObject({ approvalMs: 60_000, silentMs: 480_000, longToolMs: 1_800_000, repeat: 6, window: 10, failStreak: 4 })
+  const repeats = Array.from({ length: 6 }, () => call('Bash', 'bun test'))
+  for (const status of ['idle', 'done', 'failed', 'waiting'] as const) {
+    expect(assessHealth(node('main', undefined, { status, recent: repeats }), 1000).health).not.toBe('looping')
+  }
+  for (const tool of ['Read', 'Grep', 'Glob']) {
+    expect(assessHealth(node('a', 'main', { recent: Array.from({ length: 10 }, () => call(tool, 'same')) }), 1000).health).toBe('ok')
+  }
+  expect(toolSignature('Bash', { command: 'git status --short' })).toBeUndefined()
+  expect(assessHealth(node('a', 'main', { recent: Array.from({ length: 10 }, () => call('Bash', 'git status')) }), 1000).health).toBe('ok')
+  expect(assessHealth(node('a'), 8 * 60_000).health).toBe('ok')
+  expect(assessHealth(node('main'), 5 * 60_000 + 1).health).toBe('stalled')
+  expect(assessHealth(node('main', undefined, { activityAt: 5 * 60_000 }), 6 * 60_000).health).toBe('ok')
+  expect(assessHealth(node('main'), 6 * 60_000, true).health).toBe('ok')
+})
+
+test('repeat signatures contain complete stable arguments and count only the last ten calls', () => {
+  const long = 'a'.repeat(100)
+  const calls = Array.from({ length: 6 }, (_, i) => ({ ...call('Edit', 'same clipped detail'), signature: toolSignature('Edit', { file_path: 'a', new_string: long + i }) }))
+  expect(assessHealth(node('a', 'main', { recent: calls }), 1000).health).toBe('ok')
+  expect(toolSignature('Edit', { b: 2, a: 1 })).toBe(toolSignature('Edit', { a: 1, b: 2 }))
+  expect(assessHealth(node('a', 'main', { recent: [...Array(6).fill(call('Bash', 'bun test')), ...Array(5).fill(call('Read', 'a'))] }), 1000).health).toBe('ok')
+})
+
+test('approval clears on execution, and background/monitoring tools may run quietly', () => {
+  expect(assessHealth(node('a', 'main', { approvalSince: 0 }), 60_000).health).toBe('ok')
+  expect(assessHealth(node('a', 'main', { approvalSince: 0 }), 60_001).health).toBe('approval')
+  expect(assessHealth(node('a', 'main', { approvalSince: 0, tool: 'Edit', toolStartedAt: 30_000 }), 90_000).health).toBe('ok')
+  for (const tool of ['Monitor', 'Task', 'Agent', 'WebFetch', 'sleep']) {
+    expect(assessHealth(node('a', 'main', { tool, toolStartedAt: 0 }), 31 * 60_000).health).toBe('ok')
+  }
+  expect(assessHealth(node('a', 'main', { tool: 'Bash', toolStartedAt: 0, toolBackground: true }), 31 * 60_000).health).toBe('ok')
+  expect(assessHealth(node('a', 'main', { tool: 'Bash', detail: 'sleep 3600', toolStartedAt: 0 }), 31 * 60_000).health).toBe('ok')
+  expect(assessHealth(node('a', 'main', { tool: 'Bash', toolStartedAt: 0 }), 31 * 60_000).health).toBe('stalled')
+})
+
+test('phase and summary include main work and preserve real activity time', () => {
+  expect(nodePhase(node('main'))).toBe('thinking')
+  expect(nodePhase(node('main'), true)).toBe('waiting-children')
+  expect(nodePhase(node('main', undefined, { status: 'idle' }))).toBe('waiting-user')
+  expect(nodePhase(node('a', 'main', { approvalSince: 0 }))).toBe('waiting-approval')
+  expect(nodePhase(node('a', 'main', { toolStartedAt: 0 }))).toBe('tool')
+  expect(snapshotSummary([node('main', undefined, { activityAt: 123 }), node('a', 'main', { status: 'waiting', phase: 'waiting-user' }), node('b', 'main', { status: 'failed', health: 'stalled' })])).toEqual({ running: 1, waiting: 1, failed: 1, flagged: 1, lastActivityAt: 123 })
+})
+
+test('hook heartbeat precedes hung collectors, skips overlapping ticks, and clears approvals on tool start', async () => {
+  const { spawnSync } = await import('node:child_process')
+  const ran = spawnSync('bun', ['--eval', String.raw`
+import { mock } from 'bun:test'
+import assert from 'node:assert/strict'
+const state = new Map()
+mock.module('claude-code', () => ({
+ atom: (key, initial) => { state.set(key.key, initial); return key.key },
+ read: async (_, key) => state.get(key),
+ update: async (_, key, fn) => { state.set(key, fn(state.get(key))) },
+}))
+mock.module('react/jsx-dev-runtime', () => ({ jsxDEV: () => null }))
+const { register } = await import(process.argv[1])
+const handlers = new Map(); let tick; let clock = 1000; let t3Calls = 0
+register((name, filter, fn) => { handlers.set(name, fn ?? filter) })
+const files = new Map(); const writes = []
+const $ = {
+ env: { get: async () => '/fixture' }, session: { id: async () => 's', cwd: async () => '/repo', model: async () => 'sonnet' },
+ fs: {
+  read: async path => { if (!files.has(path)) throw Error('missing'); return files.get(path) },
+  write: async (path, body) => { files.set(path, body); if (path.endsWith('.json.tmp')) writes.push(JSON.parse(body)) },
+  rename: async (from, to) => { files.set(to, files.get(from)); files.delete(from) }, list: async () => [],
+ },
+ process: { run: async argv => {
+  if (argv[0] === 'python3') { t3Calls++; return new Promise(() => {}) }
+  if (argv[0] === 'mv') { files.set(argv[3], files.get(argv[2])); files.delete(argv[2]); return { stdout: '', exitCode: 0 } }
+  return { stdout: '', exitCode: 0 }
+ } },
+ agent: { list: async () => [] }, clock: { now: async () => clock, every: (_, cb) => { tick = cb } },
+ store: { get: async () => false }, command: { register: async () => {} },
+ ui: { toast: () => {}, log: () => {}, notify: async () => {}, open: async () => {} },
+}
+const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
+const next = async e => e
+await handlers.get('session.start')($, {}, next)
+assert.equal(writes.length, 1)
+clock = 2000; tick(); tick(); await delay(20)
+assert.equal(writes.length, 2, 'busy tick wrote a duplicate snapshot')
+assert.equal(t3Calls, 1)
+await delay(2600)
+clock = 8000; tick(); await delay(20)
+assert.equal(writes.length, 3)
+assert.equal(writes.at(-1).updatedAt, 8000)
+assert.equal(writes.at(-1).seq, 3)
+assert.match(writes.at(-1).lastError, /t3:.*deadline/)
+assert.equal(t3Calls, 1, 'timed-out collector was launched again')
+assert.ok(files.has('/fixture/.claude/mods-data/agent-board/web/sessions/s.json'))
+assert.equal([...files.keys()].some(path => path.endsWith('.tmp')), false)
+clock = 9000; await handlers.get('turn.start')($, {}, next)
+await handlers.get('tool.check')($, { tool_use_id: 'tool-1' }, async () => ({ decision: 'ask' }))
+assert.equal(state.get('agents')[0].approvalSince, 9000)
+let resolveTool
+clock = 10000
+const tool = handlers.get('tool.call')($, { tool: 'Edit', tool_use_id: 'tool-1', file_path: '/a', new_string: 'body' },
+ () => new Promise(resolve => { resolveTool = resolve }))
+await delay(10)
+assert.equal(state.get('agents')[0].approvalSince, undefined)
+assert.equal(state.get('agents')[0].phase, 'tool')
+clock = 11000; resolveTool({ text: 'ok' }); await tool
+assert.equal(state.get('agents')[0].activityAt, 11000)
+assert.match(state.get('agents')[0].recent.at(-1).signature, /new_string/)
+await handlers.get('agent.spawn')($, { subagentType: 'worker', description: 'Child' }, async () => ({ agentId: 'child', model: 'sonnet' }))
+clock = 12000; tick(); await delay(20)
+assert.equal(writes.at(-1).summary.running, 2)
+assert.ok(writes.at(-1).links.some(link => link.kind === 'delegate' && link.to.nodeId === 'child'))
+clock = 13000
+await handlers.get('tool.call')($, { tool: 'mcp__t3_code__delegate_task', tool_use_id: 'delegate-1', task: 'Child work', target: { providerInstanceId: 'codex', model: 'gpt-6.1-sol' } }, async () => ({
+ result: { content: [{ text: JSON.stringify({ taskId: 'task-1', childThreadId: 'child-thread', status: 'completed', summary: 'Result' }) }] },
+}))
+await handlers.get('tool.call')($, { tool: 'SendMessage', tool_use_id: 'message-1', to: 'Other', targetSessionId: 'other-session', message: 'Hello' }, async () => ({ text: 'sent' }))
+clock = 14000; tick(); await delay(20)
+assert.ok(writes.at(-1).links.some(link => link.kind === 'delegate' && link.to.nodeId === 't3-task-1'))
+assert.ok(writes.at(-1).links.some(link => link.kind === 'result' && link.from.nodeId === 't3-task-1'))
+assert.ok(writes.at(-1).links.some(link => link.kind === 'peer-msg' && link.to.sessionId === 'other-session' && link.to.peer === 'Other'))
+assert.equal(writes.at(-1).agents.find(n => n.id === 't3-task-1').t3.childThreadId, 'child-thread')
+`, `${import.meta.dir}/register.tsx`], { encoding: 'utf8', timeout: 10000 })
+  expect(ran.stderr).toBe('')
+  expect(ran.status).toBe(0)
+}, 15000)

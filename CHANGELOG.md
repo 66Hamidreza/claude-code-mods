@@ -4,6 +4,21 @@ All notable changes are documented here using [Keep a Changelog](https://keepach
 
 ## [Unreleased]
 
+### Added (web board overhaul)
+
+- agent-board: one `/sessions.json` index (with `serverNow` clock) replaces per-file polling; snapshots are written atomically after a cheap heartbeat that slow collectors can no longer starve; stale usage is kept and flagged instead of shown as 100% left.
+- agent-board: session phases (`thinking`, `tool`, `waiting-*`, `idle`), `activityAt`, per-session summary, and recorded data-flow links (delegate, result, peer message) drawn as real edges plus a cross-session traffic strip.
+- agent-board web: acknowledge-able Needs attention (grouped, capped), transition-only notifications with digest, one leader tab and per-session mute, collapsed finished agents, per-session agent search, stable session list (hysteresis, ended sessions only under Ended).
+- agent-board usage: window reset shown as "Reset" with absolute time and countdown, labelled dates, and detection of early/unscheduled usage resets from a persisted reading history (`resets` in `/usage.json`) with banner and badge.
+
+### Changed (web board overhaul)
+
+- agent-board health thresholds relaxed (approval 60s, silent 8m, long tool 30m, loop 6 of 10 non-polling calls); approval clears when the tool starts.
+
+### Fixed (web board overhaul)
+
+- agent-board: sessions no longer vanish on clock skew, torn reads, failed polls or T3 child dedupe flapping; standalone Codex scanner keeps resumed logs and no longer marks quiet work done.
+
 ### Added
 
 - agent-board: always-on web board independently discovers recent standalone T3 Code Codex main threads (project, model, action, status, tokens), without Claude hooks; excludes CX runs and T3 delegated children using read-only state.

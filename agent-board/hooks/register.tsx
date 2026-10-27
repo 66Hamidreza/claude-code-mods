@@ -6,6 +6,9 @@ import {
   HEALTH_BADGE,
   STATUS_GLYPH,
   assessHealth,
+  nodePhase,
+  snapshotSummary,
+  toolSignature,
   adviceLine,
   adviceTitle,
   compareAdvice,
@@ -28,9 +31,9 @@ import {
   sparkline,
   treeOrder,
 } from './board'
-import type { OrchestrationAdvice, Snapshot } from './board'
+import type { OrchestrationAdvice, Snapshot, SnapshotLink } from './board'
 import { scanCodex } from './codex'
-import { scanT3, t3Nodes } from './t3'
+import { scanT3, t3Nodes, t3Status } from './t3'
 import type { T3Scan } from './t3'
 import { WEB_PAGE } from './web'
 
@@ -54,6 +57,45 @@ type Job = { id: number; prompt: string; status: 'running' | 'done' | 'failed'; 
 let sessionId = ''
 let sessionStart = 0
 let tick = 0
+let busy = false
+let seq = 0
+let lastError: string | undefined
+let sessionEnded = false
+let snapshotQueue: Promise<void> = Promise.resolve()
+let sessionCwd = ''
+let snapshotPath = ''
+const links: SnapshotLink[] = []
+const linkIds = new Set<string>()
+const recordLink = (link: SnapshotLink) => {
+  if (linkIds.has(link.id)) return
+  linkIds.add(link.id)
+  links.push(link)
+  links.sort((a, b) => a.at - b.at)
+  if (links.length > 50) links.splice(0, links.length - 50)
+}
+const flow = (id: string, at: number, kind: SnapshotLink['kind'], from: string, to: SnapshotLink['to'], preview?: string) =>
+  recordLink({ id, at, kind, from: { sessionId, nodeId: from }, to, preview: preview ? clip(preview, 200) : undefined })
+const collectors = new Map<string, { at: number; running: boolean }>()
+// A timed-out collector stays marked in flight until its underlying work settles.
+const collect = async (name: string, at: number, work: () => Promise<void>) => {
+  const state = collectors.get(name)
+  if (state?.running || (state && at - state.at < 5000)) return
+  const current = { at, running: true }
+  collectors.set(name, current)
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const job = Promise.resolve().then(work).then(() => {
+    if (lastError?.startsWith(`${name}:`)) lastError = undefined
+  }).finally(() => { current.running = false })
+  try {
+    await Promise.race([job, new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error('deadline exceeded')), 2500)
+    })])
+  } catch (error) {
+    lastError = `${name}: ${String(error)}`
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
 let notifyOn = true
 const lastSeen = new Map<string, number>()
 const announced = new Map<string, string>()
@@ -81,6 +123,8 @@ const node = (fields: Pick<AgentNode, 'id' | 'kind' | 'label' | 'type' | 'model'
   recent: [],
   health: 'ok',
   lastEventAt: fields.startedAt,
+  activityAt: fields.startedAt,
+  phase: fields.status === 'running' ? 'thinking' : 'idle',
   ...fields,
 })
 
@@ -127,6 +171,7 @@ const syncCodex = async ($: EngineInterface) => {
         tokens: rollout.tokens,
         tools: rollout.commands,
         lastEventAt: Math.max(one.lastEventAt, rollout.activityAt),
+        activityAt: Math.max(one.activityAt ?? 0, rollout.activityAt),
         detail: rollout.lastAction,
         // A foreground `cx` returns after committing; the log says Codex itself is through.
         status: rollout.isComplete && one.status === 'running' ? 'done' : one.status,
@@ -153,10 +198,16 @@ const syncT3 = async ($: EngineInterface, at: number) => {
   const scan: T3Scan | undefined = await scanT3($, sessionId)
   if (!scan) return
   t3Thread = { threadId: scan.threadId, title: scan.title, parentThreadId: scan.parentThreadId }
+  if (scan.approvals !== undefined) await update($, agents, patch('main', one => ({ ...one,
+    status: (scan.inputs ?? 0) > 0 ? 'waiting' : one.status === 'waiting' && one.phase === 'waiting-user' ? 'running' : one.status,
+    approvalSince: scan.approvals! > 0 && one.toolStartedAt === undefined ? one.approvalSince ?? at : undefined,
+  })))
   for (const fresh of t3Nodes(scan, at)) {
     const before = (await read($, agents)).find(one => one.id === fresh.id)
-    await update($, agents, upsert(fresh))
-    if (fresh.status === 'running' || before?.status === fresh.status) continue
+    await update($, agents, upsert({ ...fresh, approvalSince: fresh.approvalSince === undefined ? undefined : before?.approvalSince ?? at }))
+    flow(`${fresh.id}:delegate`, fresh.startedAt, 'delegate', 'main', { sessionId, nodeId: fresh.id }, fresh.label)
+    if (isOver(fresh)) flow(`${fresh.id}:result`, fresh.endedAt ?? at, 'result', fresh.id, { sessionId, nodeId: 'main' }, fresh.t3?.result ?? fresh.label)
+    if (!isOver(fresh) || before?.status === fresh.status) continue
     const who = `${fresh.t3?.driver === 'codex' ? 'Codex' : 'Agent'} "${clip(fresh.label, 40)}"`
     await announce(
       $,
@@ -227,35 +278,66 @@ function isHelperCwd(cwd: string) {
   return cwd.startsWith('/tmp/remember-summarizer-cwd')
 }
 
-const writeSnapshot = async ($: EngineInterface, at: number, isEnded = false) => {
-  const cwd = await $.session.cwd()
-  if (isHelperCwd(cwd)) return
-  currentAdvice = await readAdvice($, sessionId, at)
-  const snapshot: Snapshot & { activity: number[]; events: BoardEvent[] } = {
-    sessionId,
-    name: cwd.split('/').pop() ?? cwd,
-    title: t3Thread?.title || (await sessionTitle($, cwd, at)),
-    t3: t3Thread,
-    cwd,
-    updatedAt: at,
-    isEnded,
-    advice: currentAdvice,
-    agents: await read($, agents),
-    activity: await read($, activity),
-    events: (await read($, events)).slice(-15),
-  }
-  await $.fs.write(`${await dataDir($)}/agent-board/web/sessions/${sessionId}.json`, JSON.stringify(snapshot)).catch(() => undefined)
+// The heartbeat has no transcript, database, rollout, or peer reads on its path.
+const writeSnapshot = ($: EngineInterface, at: number, isEnded = false): Promise<void> => {
+  sessionEnded ||= isEnded
+  const job = snapshotQueue.catch(() => undefined).then(async () => {
+    if (isHelperCwd(sessionCwd)) return
+    await update($, agents, list => {
+      const activeParents = new Set(list.filter(n => (n.status === 'running' || n.status === 'waiting') && n.id !== 'main').map(n => n.parentId ?? 'main'))
+      for (let depth = 0; depth < list.length; depth++) {
+        const size = activeParents.size
+        for (const n of list) if (activeParents.has(n.id) && n.parentId) activeParents.add(n.parentId)
+        if (activeParents.size === size) break
+      }
+      const activity = new Map(list.map(n => [n.id, Math.max(n.activityAt ?? n.lastEventAt, lastSeen.get(n.id) ?? 0)]))
+      // Propagate actual evidence, never the scanner's polling/heartbeat time.
+      for (let depth = 0; depth < list.length; depth++) {
+        let changed = false
+        for (const n of list) {
+          if (!n.parentId || !activity.has(n.parentId)) continue
+          if (activity.get(n.id)! > activity.get(n.parentId)!) {
+            activity.set(n.parentId, activity.get(n.id)!); changed = true
+          }
+        }
+        if (!changed) break
+      }
+      return list.map(one => {
+        const fresh = { ...one, activityAt: activity.get(one.id)!, lastEventAt: Math.max(one.lastEventAt, lastSeen.get(one.id) ?? 0) }
+        const children = activeParents.has(one.id)
+        const judged = assessHealth(fresh, at, children)
+        return { ...fresh, phase: nodePhase(fresh, children), health: judged.health, healthNote: judged.note }
+      })
+    })
+    const list = await read($, agents)
+    const snapshot: Snapshot & { activity: number[]; events: BoardEvent[] } = {
+      sessionId, name: sessionCwd.split('/').pop() ?? sessionCwd,
+      title: t3Thread?.title || title, t3: t3Thread, cwd: sessionCwd,
+      updatedAt: at, seq: ++seq, lastError, isEnded: sessionEnded,
+      summary: snapshotSummary(list), links: [...links], advice: currentAdvice,
+      agents: list, activity: await read($, activity), events: (await read($, events)).slice(-15),
+    }
+    const body = JSON.stringify(snapshot)
+    try {
+      await $.fs.write(`${snapshotPath}.tmp`, body)
+      const moved = await $.process.run(['mv', '-f', `${snapshotPath}.tmp`, snapshotPath], { timeoutMs: 3000 })
+      if (moved.exitCode !== 0) throw new Error('mv failed')
+    } catch {
+      // A failed rename still emits a heartbeat.
+      await $.fs.write(snapshotPath, body)
+    }
+  })
+  snapshotQueue = job
+  return job
 }
 
-const sync = async ($: EngineInterface) => {
-  tick++
-  const at = await $.clock.now()
+const syncLocal = async ($: EngineInterface, at: number) => {
   const listed = await $.agent.list().catch(() => [])
   for (const info of listed) {
     const status = fromAgentStatus(info.status)
     await update($, agents, list =>
       list.some(one => one.id === info.id)
-        ? patch(info.id, one => (one.status === status ? one : { ...one, status, endedAt: status === 'done' || status === 'failed' ? at : undefined }))(list)
+        ? patch(info.id, one => (one.status === status ? one : { ...one, status, activityAt: at, lastEventAt: at, endedAt: status === 'done' || status === 'failed' ? at : undefined, approvalSince: undefined }))(list)
         : status === 'done' || status === 'failed'
           ? list
           : [
@@ -292,53 +374,62 @@ const sync = async ($: EngineInterface) => {
     }
   } catch {}
 
-  if (tick % 2 === 0) await syncCodex($)
-  if (tick % 3 === 0) await syncPeers($, at)
-  if (tick % 3 === 1) await syncT3($, at)
+}
 
-  // Health: fold in what the model streamed since, then judge every node.
-  await update($, agents, list => {
-    const running = new Set(list.filter(one => one.status === 'running' && one.kind !== 'main').map(one => one.parentId ?? 'main'))
+const sync = async ($: EngineInterface) => {
+  if (busy || sessionEnded) return
+  busy = true
+  try {
+    tick++
+    const at = await $.clock.now()
+    await writeSnapshot($, at)
+    await Promise.all([
+      collect('agents/jobs', at, () => syncLocal($, at)),
+      collect('codex', at, () => syncCodex($)),
+      collect('peers', at, () => syncPeers($, at)),
+      collect('t3', at, () => syncT3($, at)),
+      collect('metadata', at, async () => {
+        currentAdvice = await readAdvice($, sessionId, at)
+        await sessionTitle($, sessionCwd, at)
+      }),
+    ])
 
-    return list.map(one => {
-      const seen = Math.max(one.lastEventAt, lastSeen.get(one.id) ?? 0)
-      const judged = assessHealth({ ...one, lastEventAt: seen }, at, running.has(one.id))
+    await collect('notifications', at, async () => {
+      for (const one of await read($, agents)) {
+        if (one.kind !== 'main' && isOver(one)) flow(`${one.id}:result`, one.endedAt ?? at, 'result', one.id, { sessionId, nodeId: one.parentId ?? 'main' }, one.t3?.result ?? one.codex?.summary ?? one.label)
+        const who = one.kind === 'main' ? 'Main session' : one.kind === 'codex' ? 'Codex' : `Agent "${clip(one.label, 40)}"`
+        if (one.health === 'looping' || one.health === 'stalled') {
+          await announce($, `${one.id}:health`, { level: 'warn', text: `${HEALTH_BADGE[one.health]} ${who}: ${one.healthNote ?? ''}`, nodeId: one.id }, true, one.health)
+        } else if (one.health === 'approval') {
+          await announce($, `${one.id}:health`, { level: 'warn', text: `⏸ ${who}: ${one.healthNote ?? 'waiting for approval'}`, nodeId: one.id }, false, one.health)
+        } else announced.delete(`${one.id}:health`)
 
-      return seen === one.lastEventAt && judged.health === one.health && judged.note === one.healthNote
-        ? one
-        : { ...one, lastEventAt: seen, health: judged.health, healthNote: judged.note }
+        if (one.kind !== 'main' && one.kind !== 'codex' && !one.t3 && isOver(one)) {
+          const took = (one.endedAt ?? at) - one.startedAt
+          await announce(
+            $,
+            `${one.id}:end`,
+            {
+              level: one.status === 'done' ? 'done' : 'fail',
+              text: `${one.status === 'done' ? '✓' : '✗'} ${who} ${one.status === 'done' ? 'finished' : 'failed'} (${formatDuration(took)}, ${one.tools} tools)`,
+              nodeId: one.id,
+            },
+            took > NOTIFY_AFTER_MS || one.status === 'failed',
+            one.status,
+          )
+        }
+      }
     })
-  })
 
-  for (const one of await read($, agents)) {
-    const who = one.kind === 'main' ? 'Main session' : one.kind === 'codex' ? 'Codex' : `Agent "${clip(one.label, 40)}"`
-    if (one.health === 'looping' || one.health === 'stalled') {
-      await announce($, `${one.id}:health`, { level: 'warn', text: `${HEALTH_BADGE[one.health]} ${who}: ${one.healthNote ?? ''}`, nodeId: one.id }, true, one.health)
-    } else if (one.health === 'approval') {
-      await announce($, `${one.id}:health`, { level: 'warn', text: `⏸ ${who}: ${one.healthNote ?? 'waiting for approval'}`, nodeId: one.id }, false, one.health)
-    } else announced.delete(`${one.id}:health`)
-
-    if (one.kind !== 'main' && one.kind !== 'codex' && !one.t3 && isOver(one)) {
-      const took = (one.endedAt ?? at) - one.startedAt
-      await announce(
-        $,
-        `${one.id}:end`,
-        {
-          level: one.status === 'done' ? 'done' : 'fail',
-          text: `${one.status === 'done' ? '✓' : '✗'} ${who} ${one.status === 'done' ? 'finished' : 'failed'} (${formatDuration(took)}, ${one.tools} tools)`,
-          nodeId: one.id,
-        },
-        took > NOTIFY_AFTER_MS || one.status === 'failed',
-        one.status,
-      )
-    }
+    const list = await read($, agents)
+    const running = list.filter(one => one.status === 'running').length
+    await update($, activity, history => [...history, running].slice(-HISTORY))
+    if (tick % 2 === 0 || running > 0) await update($, now, () => at)
+  } catch (error) {
+    lastError = String(error)
+  } finally {
+    busy = false
   }
-
-  const list = await read($, agents)
-  const running = list.filter(one => one.status === 'running').length
-  await update($, activity, history => [...history, running].slice(-HISTORY))
-  if (tick % 2 === 0 || running > 0) await update($, now, () => at)
-  await writeSnapshot($, at)
 }
 
 const startWeb = async ($: EngineInterface) => {
@@ -369,7 +460,14 @@ const ago = (ms: number) => (ms < 5000 ? 'now' : `${formatDuration(ms)} ago`)
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     sessionId = await $.session.id()
+    sessionCwd = await $.session.cwd()
+    sessionEnded = false
     const dir = `${await dataDir($)}/agent-board/web`
+    snapshotPath = `${dir}/sessions/${sessionId}.json`
+    try {
+      const previous = JSON.parse(await $.fs.read(snapshotPath)).seq
+      if (Number.isSafeInteger(previous)) seq = Math.max(seq, previous)
+    } catch {}
     await $.process.run(['mkdir', '-p', `${dir}/sessions`]).catch(() => undefined)
     await $.fs.write(`${dir}/index.html`, WEB_PAGE).catch(() => undefined)
     notifyOn = (await $.store.get('notify').catch(() => undefined)) !== false
@@ -391,6 +489,7 @@ export const register: Register = on => {
       name: 'board',
       description: 'Live agent board: /board (pane), /board web, /board notify on|off, /board clear',
     })
+    await writeSnapshot($, at)
     $.clock.every(1000, () => void sync($).catch(error => $.ui.log(`agent-board: ${String(error)}`, { to: 'debug' })))
 
     return next(e)
@@ -451,6 +550,7 @@ export const register: Register = on => {
           }),
         ),
       )
+      flow(`agent:${spawned.agentId}:delegate`, await $.clock.now(), 'delegate', e.parentAgentId ?? 'main', { sessionId, nodeId: spawned.agentId }, e.description || e.subagentType)
       if ((await read($, agents)).filter(one => one.kind !== 'main').length === 1) {
         void $.ui.open({ id: PANE, title: 'Agents' }).catch(() => undefined)
       }
@@ -462,6 +562,11 @@ export const register: Register = on => {
   // A finished background task: the Codex node it ran learns how it ended.
   on('prompt.submit', async ($, e, next) => {
     const note = e.origin.kind === 'task-notification' ? parseTaskNotification(e.text) : undefined
+    if (note) {
+      lastSeen.set('main', await $.clock.now())
+      const target = (await read($, agents)).find(n => n.id === note.taskId || (note.toolUseId !== undefined && n.toolUseId === note.toolUseId))
+      flow(`notification:${note.taskId ?? note.toolUseId}:${note.status}`, await $.clock.now(), 'result', target?.id ?? note.taskId ?? 'child', { sessionId, nodeId: target?.parentId ?? 'main' }, note.summary)
+    }
     if (note?.toolUseId) {
       if (note.outputFile) {
         const output = await $.fs.read(note.outputFile).catch(() => '')
@@ -473,7 +578,8 @@ export const register: Register = on => {
         const exit = Number(note.summary?.match(/exit code (\d+)/)?.[1] ?? 0)
         const failed = note.status !== 'completed' || exit !== 0
         const at = await $.clock.now()
-        await update($, agents, patch(id, one => ({ ...one, status: failed ? 'failed' : 'done', endedAt: one.endedAt ?? at })))
+        await update($, agents, patch(id, one => ({ ...one, status: failed ? 'failed' : 'done', endedAt: one.endedAt ?? at, activityAt: at, approvalSince: undefined, phase: 'idle' })))
+        flow(`${id}:result`, at, 'result', id, { sessionId, nodeId: target.parentId ?? 'main' }, note.summary)
         if (failed) {
           await announce($, `${id}:end`, { level: 'fail', text: `✗ Codex run failed: ${clip(note.summary ?? note.status ?? '', 200)}`, nodeId: id }, true)
         } else if (!target.codex?.isComplete) {
@@ -493,7 +599,7 @@ export const register: Register = on => {
     await update(
       $,
       agents,
-      patch(id, one => ({ ...one, status: 'running', endedAt: undefined, turns: one.turns + 1, lastEventAt: at, approvalSince: undefined })),
+      patch(id, one => ({ ...one, status: 'running', endedAt: undefined, turns: one.turns + 1, lastEventAt: at, activityAt: at, phase: 'thinking', approvalSince: undefined })),
     )
 
     return next(e)
@@ -529,6 +635,8 @@ export const register: Register = on => {
         toolStartedAt: undefined,
         approvalSince: undefined,
         lastEventAt: at,
+        activityAt: at,
+        phase: e.agentId === undefined ? 'waiting-user' : 'idle',
         tokens: one.tokens + spent,
       })),
     )
@@ -549,7 +657,7 @@ export const register: Register = on => {
     const verdict = await next(e)
     if (verdict.decision === 'ask' && e.tool_use_id) {
       const at = await $.clock.now()
-      await update($, agents, patch(e.agentId ?? 'main', one => ({ ...one, approvalSince: one.approvalSince ?? at })))
+      await update($, agents, patch(e.agentId ?? 'main', one => ({ ...one, approvalSince: one.approvalSince ?? at, phase: 'waiting-approval' })))
     }
 
     return verdict
@@ -562,7 +670,7 @@ export const register: Register = on => {
     const detail = describeTool(tool, input)
     const startedAt = await $.clock.now()
     lastSeen.set(id, startedAt)
-    await update($, agents, patch(id, one => ({ ...one, tool, detail, toolStartedAt: startedAt, tools: one.tools + 1, lastEventAt: startedAt })))
+    await update($, agents, patch(id, one => ({ ...one, tool, detail, toolStartedAt: startedAt, toolBackground: input.run_in_background === true, approvalSince: undefined, phase: 'tool', tools: one.tools + 1, lastEventAt: startedAt, activityAt: startedAt })))
 
     const command = typeof input.command === 'string' ? input.command : ''
     const codexId = tool === 'Bash' && isCodexCommand(command) ? `codex-${e.tool_use_id}` : undefined
@@ -588,8 +696,54 @@ export const register: Register = on => {
       await announce($, `${codexId}:start`, { level: 'info', text: `Codex started: ${clip(tasks.join(', ') || detail, 120)}`, nodeId: codexId }, false)
     }
 
-    const ran = await next(e)
+    // Messaging calls expose their destination in the tool input.
+    if (/SendMessage|session[-_]chat.*(?:broadcast|send|message)/i.test(tool)) {
+      const peer = input.to ?? input.recipient ?? input.target ?? input.name
+      const knownPeer = (await read($, peers)).find(p => p.sessionId === peer || p.name === peer)
+      const targetSession = input.targetSessionId ?? input.target_session_id ?? knownPeer?.sessionId
+      flow(`tool:${e.tool_use_id}:message`, startedAt, 'peer-msg', id,
+        { sessionId: typeof targetSession === 'string' ? targetSession : undefined, peer: typeof peer === 'string' ? peer : 'broadcast' },
+        String(input.message ?? input.content ?? input.text ?? detail))
+    }
+    const ran = await next(e).catch(async error => {
+      const at = await $.clock.now()
+      lastSeen.set(id, at)
+      await update($, agents, patch(id, one => ({ ...one, tool: undefined, detail: undefined,
+        toolStartedAt: undefined, approvalSince: undefined, phase: 'thinking', activityAt: at, lastEventAt: at,
+        errors: one.errors + 1, recent: [...one.recent, { tool, detail, at, ok: false, signature: toolSignature(tool, input), polling: toolSignature(tool, input) === undefined }].slice(-12),
+      })))
+      throw error
+    })
     const endedAt = await $.clock.now()
+    if (/(?:^|__|\.)delegate_task$/.test(tool)) {
+      const decode = (value: unknown): Record<string, unknown> | undefined => {
+        if (typeof value === 'string') { try { return decode(JSON.parse(value)) } catch { return undefined } }
+        if (!value || typeof value !== 'object') return undefined
+        const obj = value as Record<string, unknown>
+        if (obj.taskId || obj.subagentId || obj.childThreadId) return obj
+        if (obj.structuredContent) return decode(obj.structuredContent)
+        if (Array.isArray(obj.content)) for (const block of obj.content) {
+          const found = decode(block?.text); if (found) return found
+        }
+        return undefined
+      }
+      const result = decode(ran.result) ?? decode(ran.text)
+      const task = result?.subagentId ?? result?.taskId
+      if (typeof task === 'string' && !ran.isError && ran.deny === undefined) {
+        const childId = `t3-${task}`
+        const childThreadId = typeof result?.childThreadId === 'string' ? result.childThreadId : undefined
+        const status = t3Status(String(result?.status ?? 'running'))
+        const target = input.target as { model?: string; providerInstanceId?: string } | undefined
+        if (!(await read($, agents)).some(n => n.id === childId)) await update($, agents, upsert(node({
+          id: childId, parentId: id, kind: target?.providerInstanceId === 'codex' ? 'codex' : 'agent',
+          label: String(input.title ?? input.task ?? 'Delegated task').slice(0, 120), type: 't3', model: target?.model ?? '',
+          status, startedAt, activityAt: endedAt, endedAt: status === 'done' || status === 'failed' ? endedAt : undefined,
+          t3: { threadId: childThreadId ?? '', childThreadId, driver: String(result?.providerInstanceId ?? target?.providerInstanceId ?? ''), result: typeof result?.summary === 'string' ? result.summary : undefined },
+        })))
+        flow(`${childId}:delegate`, startedAt, 'delegate', id, { sessionId, nodeId: childId }, String(input.task ?? detail))
+        if (status === 'done' || status === 'failed') flow(`${childId}:result`, endedAt, 'result', childId, { sessionId, nodeId: id }, String(result?.summary ?? ''))
+      }
+    }
     lastSeen.set(id, endedAt)
     const ok = !ran.isError && ran.deny === undefined
     await update($, agents, list => {
@@ -602,7 +756,9 @@ export const register: Register = on => {
         approvalSince: undefined,
         errors: one.errors + (ok ? 0 : 1),
         lastEventAt: endedAt,
-        recent: [...one.recent, { tool, detail, at: endedAt, ok }].slice(-12),
+        activityAt: endedAt,
+        phase: 'thinking',
+        recent: [...one.recent, { tool, detail, at: endedAt, ok, signature: toolSignature(tool, input), polling: toolSignature(tool, input) === undefined }].slice(-12),
       }))(linked)
       if (!codexId) return cleared
       // A background Bash call returns at once; its task notification ends the node.
@@ -626,7 +782,7 @@ export const register: Register = on => {
     const rows = treeOrder(list)
     const best = newestVersions(list)
     const counts = {
-      running: list.filter(one => one.status === 'running' && one.kind !== 'main').length,
+      running: list.filter(one => one.status === 'running').length,
       done: list.filter(one => one.status === 'done').length,
       failed: list.filter(one => one.status === 'failed').length,
       flagged: list.filter(one => one.health === 'looping' || one.health === 'stalled' || one.health === 'approval').length,
