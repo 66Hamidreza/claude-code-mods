@@ -4,6 +4,10 @@ All notable changes are documented here using [Keep a Changelog](https://keepach
 
 ## [Unreleased]
 
+### Added
+
+- t3-routing: a routing policy for T3 Code users (a `CLAUDE.md` snippet, not a plugin): session-start catalog read, triage, per-task model routing through `delegate_task`, a rare council, and a change log. English and Persian guides.
+
 ## [0.2.0] - 2026-10-27
 
 ### Changed (ended sessions)

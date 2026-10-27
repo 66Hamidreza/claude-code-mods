@@ -12,6 +12,7 @@ A public marketplace of Claude Code function-hook plugins. Each mod can be insta
 | [session-chat](session-chat/README.md) | Discover and message other local Claude Code sessions. |
 | [agent-board](agent-board/README.md) | Observe agents, T3 delegated tasks and Codex jobs in a terminal pane or local web board, with Claude/Codex usage left. |
 | [prompt-router](prompt-router/README.md) | Route prompts by rules and classification; advise on parallel work. |
+| [t3-routing](t3-routing/README.md) | Policy (a `CLAUDE.md` snippet, not a plugin) for T3 Code users: triage, per-task model routing through `delegate_task`, and a rare council. |
 
 ## Install
 
@@ -96,6 +97,7 @@ Built with Claude (Anthropic) and OpenAI Codex as AI coding collaborators. The m
 | [session-chat](docs/fa/session-chat.md) | پیدا کردن و پیام دادن به نشست‌های محلی Claude Code |
 | [agent-board](docs/fa/agent-board.md) | نمایش عامل‌ها و کارهای Codex در پنل ترمینال یا داشبورد محلی |
 | [prompt-router](docs/fa/prompt-router.md) | انتخاب مدل با قواعد و دسته‌بندی؛ پیشنهاد اجرای موازی |
+| [t3-routing](docs/fa/t3-routing.md) | سیاست مسیریابی مدل برای کاربران T3 Code (قطعهٔ `CLAUDE.md`، نه افزونه) |
 
 ### نصب
 

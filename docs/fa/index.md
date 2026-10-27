@@ -10,6 +10,7 @@
 | [session-chat](session-chat.md) | پیام‌رسانی میان نشست‌های محلی |
 | [agent-board](agent-board.md) | مشاهدهٔ عامل‌ها، کارهای T3 و Codex و مصرف باقی‌مانده در ترمینال و مرورگر |
 | [prompt-router](prompt-router.md) | انتخاب مدل و پیشنهاد اجرای موازی |
+| [t3-routing](t3-routing.md) | سیاست مسیریابی مدل برای کاربران T3 Code (قطعهٔ CLAUDE.md، نه افزونه) |
 
 ## نصب
 
