@@ -198,6 +198,12 @@ class Scanner:
             return self.last_good
         self.seq += 1
         out = {}
+        child_tokens = {}
+        for _, info, mtime in paths.values():
+            if info and info['threadId'] in child_ids:
+                tid = native_threads.get(info['threadId'])
+                if tid:
+                    child_tokens[tid] = child_tokens.get(tid, 0) + (info['tokens'] or 0)
         for _, info, mtime in paths.values():
             if not info or info['threadId'] in child_ids:
                 continue
@@ -229,6 +235,8 @@ class Scanner:
                     agent.pop('endedAt', None)
                     if thread['approvals']:
                         agent['approvalSince'] = at
+                for kid in children.get(tid, []):
+                    kid['tokens'] = child_tokens.get(kid['t3']['childThreadId'], 0)
                 snapshot['agents'].extend(children.get(tid, []))
                 agents = snapshot['agents']
                 live = any(a['status'] in ('running', 'waiting') for a in agents)

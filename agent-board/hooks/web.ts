@@ -97,6 +97,12 @@ svg.edges { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
 .row { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto; gap: 3px 10px; padding: 10px 18px 10px calc(20px + var(--d, 0) * 28px); position: relative; --mix: 100%; --fam: var(--none); transition: background-color 140ms var(--ease-out); }
 .row::after { content: ""; position: absolute; left: 0; top: 9px; bottom: 9px; width: 2px; background: color-mix(in srgb, var(--fam) var(--mix), var(--panel)); }
 .row + .row { border-top: 1px solid #202833; }
+.running .dot { box-shadow: 0 0 0 0 color-mix(in srgb, var(--run) 60%, transparent); animation: glow 1.6s ease-out infinite; }
+.running::after { animation: bar-glow 1.6s ease-in-out infinite alternate; }
+.running .bar-tok i { animation: bar-glow 1.6s ease-in-out infinite alternate; }
+@keyframes glow { to { box-shadow: 0 0 0 7px transparent; } }
+@keyframes bar-glow { from { opacity: .55; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .running .dot, .running::after, .running .bar-tok i { animation: none; } }
 .row.flash { background: color-mix(in srgb, var(--fam) 16%, var(--panel)); }
 .t1 { --mix: 100%; } .t2 { --mix: 66%; } .t3 { --mix: 40%; }
 .opus { --fam: var(--opus); } .sonnet { --fam: var(--sonnet); } .haiku { --fam: var(--haiku); } .codex { --fam: var(--cx); }
@@ -652,7 +658,7 @@ function rowHtml(r, best, now, ended) {
     '<i class="dot" aria-hidden="true"></i><span class="name"><b>' + esc(clip(a.label || a.id, 70)) + '</b>' + (mc.label ? '<span class="badge" title="' + esc('Reported model: ' + (a.model || 'unknown')) + '">' + esc(mc.label) + '</span>' : '') + '</span>' +
     '<span class="doing">' + esc(clip(line, 140)) + '</span>' +
     (fl ? '<span class="flag' + (a.health === 'approval' ? ' wait' : '') + '">' + esc(clip(a.healthNote || a.health, 120)) + '</span>' : third && !over ? '<span class="over">' + esc(clip(third, 120)) + '</span>' : over && third ? '<span class="over">' + esc(clip(third, 120)) + '</span>' : '') +
-    '<span class="nums"><span class="t">' + clockHtml(a.startedAt, a.endedAt) + '</span>' + (a.tokens ? '<span>' + tok(a.tokens) + '</span><span class="bar-tok"><i style="width:' + pct + '%"></i></span>' : '') + '</span></div>';
+    '<span class="nums"><span class="t">' + clockHtml(a.startedAt, a.endedAt) + '</span>' + '<span>' + (a.tokens ? tok(a.tokens) : '0') + '</span><span class="bar-tok"><i style="width:' + (a.tokens ? pct : 0) + '%"></i></span>' + '</span></div>';
 }
 function spark(values) {
   var v = values.length ? values : [0], top = Math.max(1, Math.max.apply(null, v)), n = v.length;
@@ -764,8 +770,13 @@ function drawEdges(tree) {
     p.setAttribute('marker-end', 'url(#' + mid + ')'); var t = document.createElementNS(NS, 'title'); t.textContent = title; p.appendChild(t); svg.appendChild(p);
   }
   var links = linksFor(s), hasLinks = Array.isArray(s.links) && s.links.length || links.length;
-  if (hasLinks) links.filter(function (l) { return l.kind === 'delegate' || l.kind === 'result'; }).forEach(function (l) { path(resolve(l.from), resolve(l.to), l.kind, l.at, linkTitle(l, serverNow()), false); });
-  else rows.forEach(function (r) { var parent = rows.get(r.dataset.p); if (parent) path(parent, r, 'delegate', 0, 'Inferred relationship; no exchange data reported', true); });
+  var linked = new Set();
+  if (hasLinks) links.filter(function (l) { return l.kind === 'delegate' || l.kind === 'result'; }).forEach(function (l) { var f = resolve(l.from), t = resolve(l.to); if (f && t) { linked.add(f.dataset.id); linked.add(t.dataset.id); } path(f, t, l.kind, l.at, linkTitle(l, serverNow()), false); });
+  rows.forEach(function (r) {
+    var parent = rows.get(r.dataset.p); if (!parent || linked.has(r.dataset.id)) return;
+    var live = r.classList.contains('running') || r.classList.contains('waiting');
+    path(parent, r, 'delegate', live ? serverNow() : 0, live ? 'Working: parent delegated this task and is waiting for the result' : 'Inferred relationship; no exchange data reported', !live);
+  });
   tree.appendChild(svg);
 }
 function sectionFor(s) {
