@@ -22,22 +22,40 @@ It only takes effect where T3 tools (`delegate_task`, `orchestrator_capabilities
 
 ## Who gets what, why, and at what effort
 
-The author's current mapping, as an example (model names go stale; map the tiers to what your `orchestrator_capabilities` lists):
+Tiers: **P-F / P-W** = primary provider's fast / workhorse model; **C-F / C-W / C-D** = Claude's fast / workhorse / deep model. The author's current mapping (names go stale; resolve them from `orchestrator_capabilities`): P-F = gpt-6-luna, P-W = gpt-6.1-sol, C-F = Haiku 5.5, C-W = Sonnet 5.5, C-D = Opus 5.5.
 
-| Task | Model (example) | Effort | Why |
-| --- | --- | --- | --- |
-| Mechanical edits, formatting, renames | gpt-6-luna | low | Exact spec, nothing to reason about; cheapest tier is enough |
-| Search, inventory, log summaries | gpt-6-luna (fallback Haiku 5.5) | low / medium | Read-heavy and low risk; keeps the main thread's context clean |
-| Tests, fixtures, docs drafts | gpt-6-luna, then gpt-6-astra | medium | Needs some judgment; move up a tier only after one failure |
-| Features, backend, refactors | gpt-6.1-sol (fallback Sonnet 5.5) | medium, high after a failed check | Real logic, but a failing check is the cheapest signal to spend more |
-| Hard debugging, architecture, security, DB/RLS | gpt-6.1-sol (fallback Opus 5.5) | high; xhigh only after one failed attempt | Mistakes are costly; the main thread reviews the result |
-| UI build | gpt-6.1-sol (fallback Sonnet 5.5) | high; xhigh only for a new design system | Visual quality needs the strongest model plus named design skills |
-| UI visual check | Sonnet 5.5 + browser automation | medium, max 2 rounds | Cheap, bounded loop; avoids endless polishing |
-| Diff review | fresh-context gpt-6.1-sol, read-only | high | A reviewer with no author context; security/data reviews use a different model family from the author |
-| Council | gpt-6.1-sol + Sonnet 5.5 (Opus only if most consequential) | xhigh + high | Two families, one round, read-only; rare |
-| Secrets, prod infra, irreversible ops | main thread only | n/a | Never delegated |
+| Task | Primary | Start | Escalate to | Fallback | Why |
+| --- | --- | --- | --- | --- | --- |
+| Mechanical edits, formatting, renames | P-F | low | P-W medium | C-F medium | Exact spec; the check proves it |
+| Lookup, inventory, log summaries | P-F | low | P-F medium, then P-W medium | C-F medium | Retrieval is cheap; interpretation costs more |
+| Repo exploration (>5 files), architecture map | P-F | medium | P-W medium | C-W high | Breadth over depth; result is a short file:line map |
+| CI failure diagnosis | P-W | medium | high | C-W high | Tell code bugs, infra and flaky checks apart |
+| Fixtures, docs drafts, commit/PR text | P-F | medium | P-W medium | C-W medium | Bounded drafting from verified facts |
+| Planning, specs, acceptance criteria | P-W | medium | high | C-W high | A good spec is the cheapest way to cut downstream cost |
+| Tests (routine) | P-F | medium | P-W medium | C-W medium | Some judgment, rarely deep |
+| Tests for auth, money or data integrity | P-W | medium | high | C-W high | Weak tests there cost the most |
+| Features, backend, refactors | P-W | medium | high | C-W medium | A failing check is the cheapest signal to spend more |
+| Data transforms, read-only SQL | P-W | medium | high | C-W medium | Validate cardinality, nulls, output |
+| Performance work | P-W | medium | high | C-W high | A benchmark is the acceptance check; no guessing |
+| Debugging with a repro | P-W | medium | high, then xhigh | C-D high | The failing test makes the target concrete |
+| Debugging without a repro | P-W | high | xhigh, then council | C-D high | Ambiguity is the cost driver |
+| Architecture, security, schema/migration/RLS | P-W | high | xhigh | C-D high | Mistakes are costly; the main thread reviews and applies irreversible steps |
+| i18n / translation | P-F | medium | P-W medium | C-W medium | Glossary and placeholder checks; sensitive copy routes by risk |
+| UI change in an existing design system | P-W | medium | high | C-W high | The system constrains the decisions; spec names the design skills |
+| UI: new design system or landing page | P-W | high | xhigh | C-W high | Broad visual decisions justify the budget |
+| UI visual check | Opposite-family W + browser | medium | one targeted recheck | main thread | Rendered evidence, max 2 rounds |
+| Diff review, routine | P-W (P-F for mechanical), fresh context, read-only | medium | high | C-W medium | No author context; read the diff and the check output |
+| Diff review: security, data, auth, migrations, or >200 lines | The family that did not author it, read-only | high | council on unresolved objection | main thread, noting the independence gap | Different lineage catches different bugs |
+| Council | P-W + C-W (C-D only for the most consequential) | xhigh + high | n/a | proceed with the available member | Two families, one round, read-only; rare |
+| Secrets, prod infra, irreversible ops | main thread only | n/a | n/a | stop if prerequisites are missing | Never delegated |
 
-**How effort is chosen:** start at the lowest effort the row allows; escalate one step only on evidence (a failed acceptance check or real ambiguity), never because the prompt is long or sounds important; the same task failing twice moves to the fallback model, and a third failure goes to the main thread. `max`/`ultra` efforts, fast modes and priority service tiers are off unless you ask for them (priority only when you are blocked on the critical-path child).
+**How effort is chosen:**
+
+1. Apply the safety gates first (council triggers, main-thread-only rows), then the row's start effort. Size and language never override consequence. Start one step higher for irreversible or shared state; one step lower for an exact spec.
+2. One quality ladder. "Failed" means the acceptance check fails or the result violates the spec. A wrong or vague spec: fix the spec and rerun at the same effort. A reasoning failure: one step up in effort on the same model, with a changed hypothesis. Second failure: one attempt on the fallback. Third: the main thread. Tool or environment failures are counted separately.
+3. Availability is separate from quality: skip a provider that is down, use the nearest Claude tier, and keep the row's quality floor and its cross-family review rule.
+4. `xhigh` needs a one-line reason. `max`, `ultra`, `ultrathink`, `ultracode`, fast modes and priority service tiers are off unless you ask (priority only when you are blocked on the critical-path child).
+5. Tune from evidence: if a row passes first try three times in a row, lower its start effort one step; if it needs escalation three times in a row, raise it. Log either change in [LOG.md](LOG.md).
 
 ## Improving it
 
