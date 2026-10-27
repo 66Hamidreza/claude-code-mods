@@ -166,12 +166,43 @@ def child_node(subid, child, title, driver, model, status, started, completed,
     return node
 
 
+def claude_tokens(path):
+    """Input + output + cache-creation tokens, one count per assistant message id."""
+    seen = {}
+    with open(path, encoding='utf-8', errors='replace') as f:
+        for line in f:
+            if '"usage"' not in line:
+                continue
+            try:
+                m = json.loads(line).get('message') or {}
+                u = m.get('usage') or {}
+                seen[m.get('id') or len(seen)] = (u.get('input_tokens') or 0) + (u.get('output_tokens') or 0) \
+                    + (u.get('cache_creation_input_tokens') or 0)
+            except (ValueError, AttributeError):
+                continue
+    return sum(seen.values())
+
+
 class Scanner:
     def __init__(self, home):
         self.home = Path(home)
         self.cache = {}
         self.last_good = []
         self.seq = 0
+        self.claude_cache = {}
+
+    def claude_child_tokens(self, native_id):
+        for path in (self.home / '.claude/projects').glob('*/' + native_id + '.jsonl'):
+            try:
+                st = path.stat()
+                key = (st.st_mtime_ns, st.st_size)
+                hit = self.claude_cache.get(path)
+                if not hit or hit[0] != key:
+                    hit = self.claude_cache[path] = (key, claude_tokens(path))
+                return hit[1]
+            except OSError:
+                continue
+        return 0
 
     def scan(self, now=None):
         now = time.time() if now is None else now
@@ -198,6 +229,7 @@ class Scanner:
             return self.last_good
         self.seq += 1
         out = {}
+        thread_native = {t: n for n, t in native_threads.items()}
         child_tokens = {}
         for _, info, mtime in paths.values():
             if info and info['threadId'] in child_ids:
@@ -236,7 +268,9 @@ class Scanner:
                     if thread['approvals']:
                         agent['approvalSince'] = at
                 for kid in children.get(tid, []):
-                    kid['tokens'] = child_tokens.get(kid['t3']['childThreadId'], 0)
+                    ct = kid['t3']['childThreadId']
+                    kid['tokens'] = child_tokens.get(ct, 0) or (
+                        self.claude_child_tokens(thread_native[ct]) if ct in thread_native else 0)
                 snapshot['agents'].extend(children.get(tid, []))
                 agents = snapshot['agents']
                 live = any(a['status'] in ('running', 'waiting') for a in agents)
