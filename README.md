@@ -24,7 +24,7 @@ If you run Claude Code inside [T3 Code](https://t3.codes), [t3-routing](t3-routi
 - convene a rare, read-only council for architecture, security or irreversible decisions,
 - keep pushes, secrets and production infrastructure on the main thread.
 
-It complements `prompt-router`: that mod routes each prompt, this policy routes each task. Start with the [snippet](t3-routing/CLAUDE-snippet.md); decisions and their reasons are recorded in the [routing log](t3-routing/LOG.md).
+It complements `prompt-router`: that mod routes each prompt, this policy routes each task. The [full table](t3-routing/README.md#who-gets-what-why-and-at-what-effort) lists which model gets which task, why, and at what effort. Start with the [snippet](t3-routing/CLAUDE-snippet.md); decisions and their reasons are recorded in the [routing log](t3-routing/LOG.md).
 
 ## Install
 
@@ -113,7 +113,7 @@ Built with Claude (Anthropic) and OpenAI Codex as AI coding collaborators. The m
 
 ### سیاست مسیریابی T3 Code
 
-اگر Claude Code را داخل [T3 Code](https://t3.codes) اجرا می‌کنید، [t3-routing](docs/fa/t3-routing.md) یک سیاست مسیریابی است نه افزونه: یک قطعه را در `CLAUDE.md` می‌گذارید و مدل در شروع نشست فهرست زندهٔ مدل‌ها را می‌خواند، کار کوچک را خودش انجام می‌دهد، بقیه را با `delegate_task` به مدل مناسب می‌سپارد (از ردیف ارزان شروع و فقط با شکست بررسی بالا می‌رود)، برای تصمیم‌های معماری و امنیتی یک council کم‌یاب تشکیل می‌دهد و push، رمزها و زیرساخت production را در thread اصلی نگه می‌دارد. مکمل prompt-router است: آن هر پرامپت را مسیریابی می‌کند و این هر کار را.
+اگر Claude Code را داخل [T3 Code](https://t3.codes) اجرا می‌کنید، [t3-routing](docs/fa/t3-routing.md) یک سیاست مسیریابی است نه افزونه: یک قطعه را در `CLAUDE.md` می‌گذارید و مدل در شروع نشست فهرست زندهٔ مدل‌ها را می‌خواند، کار کوچک را خودش انجام می‌دهد، بقیه را با `delegate_task` به مدل مناسب می‌سپارد (از ردیف ارزان شروع و فقط با شکست بررسی بالا می‌رود)، برای تصمیم‌های معماری و امنیتی یک council کم‌یاب تشکیل می‌دهد و push، رمزها و زیرساخت production را در thread اصلی نگه می‌دارد. جدول کامل اینکه چه کاری به کدام مدل، چرا و با چه effort سپرده می‌شود در [راهنمای فارسی](docs/fa/t3-routing.md) است. مکمل prompt-router است: آن هر پرامپت را مسیریابی می‌کند و این هر کار را.
 
 ### نصب
 
