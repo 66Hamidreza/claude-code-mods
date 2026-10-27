@@ -6,6 +6,8 @@
 
 Observes the main session, subagents, workflow agents, Codex exec runs, and standalone Codex main threads driven by T3 Code. Shows model, current tool, recent calls, errors, tokens, duration, and heuristic health indicators in a terminal pane and a local web board.
 
+![agent-board web dashboard with sample data](../docs/images/agent-board.png)
+
 ## Commands
 
 - `/board`: open the pane.
