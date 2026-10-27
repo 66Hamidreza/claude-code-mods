@@ -4,6 +4,17 @@ All notable changes are documented here using [Keep a Changelog](https://keepach
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-27
+
+### Changed (ended sessions)
+
+- agent-board web: ended sessions are hidden from All, Needs attention, Running and Codex and appear only under Ended (pinned sessions stay).
+
+### Added (local name and docs)
+
+- agent-board: the server accepts `abd` as a Host value, so `http://abd:7788/` works after adding `127.0.0.1 abd` to the hosts file.
+- Docs: dashboard screenshot (sample data) and web board behavior section in the English and Persian agent-board guides.
+
 ### Added (web board overhaul)
 
 - agent-board: one `/sessions.json` index (with `serverNow` clock) replaces per-file polling; snapshots are written atomically after a cheap heartbeat that slow collectors can no longer starve; stale usage is kept and flagged instead of shown as 100% left.
