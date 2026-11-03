@@ -4,6 +4,8 @@ All notable changes are documented here using [Keep a Changelog](https://keepach
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-03
+
 ### Changed
 
 - agent-board web: mission-control redesign (glass panels, fluid responsive layout, two-column ultrawide), per-agent units with Claude/Codex logos and ACTIVE/STANDBY/DONE/FAULT states, directional flow edges (cyan task down, pink result up, particles on fresh edges).
