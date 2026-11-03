@@ -190,6 +190,7 @@ class Scanner:
         self.last_good = []
         self.seq = 0
         self.claude_cache = {}
+        self.token_map = {}
 
     def claude_child_tokens(self, native_id):
         for path in (self.home / '.claude/projects').glob('*/' + native_id + '.jsonl'):
@@ -236,6 +237,13 @@ class Scanner:
                 tid = native_threads.get(info['threadId'])
                 if tid:
                     child_tokens[tid] = child_tokens.get(tid, 0) + (info['tokens'] or 0)
+        token_map = dict(child_tokens)
+        for kids in children.values():
+            for kid in kids:
+                ct = kid['t3']['childThreadId']
+                if ct and not token_map.get(ct) and ct in thread_native:
+                    token_map[ct] = self.claude_child_tokens(thread_native[ct])
+        self.token_map = token_map
         for _, info, mtime in paths.values():
             if not info or info['threadId'] in child_ids:
                 continue

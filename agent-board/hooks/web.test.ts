@@ -19,7 +19,7 @@ const card = new Function('provider', 'data', 'now', helpers([
   'finiteNumber', 'validDate', 'windowReset', 'windowStale', 'windowLabel', 'clock24',
   'resetEvents', 'resetUsed', 'resetDescription', 'resetWindowLabel', 'usageCard',
 ]) + `
-  var html='', worstRemaining=null, resetNotices=new Map();
+  var html='', worstRemaining=null, resetNotices=new Map(), LOGOS={claude:'',codex:''};
   function serverNow(){return now}
   function esc(s){return String(s)}
   function projection(){return ''}
@@ -37,7 +37,8 @@ test('expired and three-hour-old usage stays unknown for both providers and wind
         { id: 'weekly', usedPct: 42, resetsAt, asOf: now - 3 * 3600000 },
       ] }, now)
       expect(html).toContain('Old reading')
-      expect(html.match(/Current usage unknown/g)?.length).toBe(2)
+      expect(html.match(/last known/g)?.length).toBeGreaterThanOrEqual(2)
+      expect(html).not.toContain('Current usage unknown')
       expect(html).toContain('Last observed 87% used')
       expect(html).not.toContain('100% remaining')
       expect(html).not.toContain('Reset ✓')
@@ -55,7 +56,7 @@ test('a passed deadline expires even a recent observation and missing usage neve
   expect(expired.html).toContain('Scheduled reset passed · awaiting a new usage reading')
   expect(expired.worstRemaining).toBeNull()
   const missing = card('codex', { asOf: now, windows: [{ id: 'five_hour' }] }, now)
-  expect(missing.html).toContain('Current usage unknown')
+  expect(missing.html).toContain('No usage reading yet')
   expect(missing.html).not.toContain('100% remaining')
 })
 

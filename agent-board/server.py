@@ -71,6 +71,12 @@ def sessions_body(directory, now_s=None):
         sid = snapshot['sessionId']
         if sid not in sessions or snapshot.get('updatedAt', 0) > sessions[sid].get('updatedAt', 0):
             sessions[sid] = snapshot
+    token_map = getattr(CODEX_SCANNER, 'token_map', {})
+    for snapshot in sessions.values():
+        for agent in snapshot['agents']:
+            child = (agent.get('t3') or {}).get('childThreadId') if isinstance(agent, dict) else None
+            if child and not agent.get('tokens') and token_map.get(child):
+                agent['tokens'] = token_map[child]
     return json.dumps({'serverNow': int(now_s * 1000), 'sessions': list(sessions.values())}).encode()
 
 

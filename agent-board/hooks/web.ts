@@ -18,9 +18,10 @@ export const WEB_PAGE = `<!doctype html>
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
+html { -webkit-text-size-adjust: 100%; }
 body { margin: 0; min-height: 100dvh; background: var(--bg); color: var(--ink); font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; font-variant-numeric: tabular-nums; }
 ::selection { color: var(--ink); background: #344b67; }
-.wrap { max-width: 1440px; margin: 0 auto; padding: 24px 28px 56px; display: grid; gap: 20px; }
+.wrap { width: 100%; max-width: 2200px; margin: 0 auto; padding: 24px clamp(12px, 2.2vw, 44px) 56px; display: grid; gap: 20px; }
 h1 { font-size: 22px; margin: 0; font-weight: 650; letter-spacing: -.035em; }
 h2 { font-size: 11px; margin: 0 0 12px; font-weight: 650; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
 .note { color: var(--muted); font-size: 12px; margin: 0; }
@@ -87,7 +88,7 @@ button:active:not(:disabled) { background-color: var(--sunk); }
 .sp i { position: absolute; width: 5px; height: 5px; border-radius: 50%; background: var(--run); right: 0; transform: translate(0, -50%); }
 .stat { display: flex; flex-wrap: wrap; gap: 4px 20px; font-size: 11px; color: var(--muted); justify-content: flex-end; }
 .stat b { color: var(--ink); font: 12px var(--mono); }
-.body { display: grid; grid-template-columns: minmax(0, 1fr) 300px; border-top: 1px solid var(--line); }
+.body { display: grid; grid-template-columns: minmax(0, 1fr) clamp(240px, 24vw, 380px); border-top: 1px solid var(--line); }
 .tree { padding: 6px 0; min-width: 0; position: relative; }
 svg.edges { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
 .e { fill: none; stroke-width: 1.25; stroke-linecap: round; }
@@ -136,7 +137,7 @@ svg.edges { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
 .acts { margin-top: 20px; padding-top: 12px; border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 8px; }
 .acts .note { font-size: 11px; line-height: 1.6; }
 .nomatch, .empty { padding: 40px 24px; text-align: center; color: var(--muted); background: var(--panel); border: 1px dashed #435065; border-radius: 8px; }
-.usage { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.usage { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 14px; }
 .usage-resets { grid-column: 1 / -1; display: grid; gap: 6px; }
 .usage-resets[hidden] { display: none; }
 .usage-reset { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; border: 1px solid var(--run); border-radius: 6px; background: var(--panel); color: var(--run); font-size: 12px; }
@@ -152,6 +153,7 @@ svg.edges { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
 .reset-marker { color: var(--run); font-size: 11px; }
 .reset-history { color: var(--muted); font-size: 10px; }
 .reading-old { color: var(--wait); }
+.usage-credits { color: var(--run); font-weight: 600; margin-right: 12px; }
 .usage-asof { margin-left: auto; text-align: right; }
 .usage-foot > span { min-width: 0; overflow-wrap: anywhere; }
 .usage-window.reset .remaining { font-size: 26px; letter-spacing: -.04em; }
@@ -166,7 +168,7 @@ svg.edges { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
 .usage-state.good { color: var(--run); } .usage-state.danger { color: var(--fail); font-weight: 600; }
 .usage-card.limited { border-color: #8b4751; }
 .usage-card.limited .usage-head { background: var(--fail-bg); border-color: #63333d; }
-.usage-windows { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 16px 18px; gap: 14px; }
+.usage-windows { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); padding: 16px 18px; gap: 14px; }
 .usage-window { min-width: 0; display: grid; gap: 5px; }
 .usage-window + .usage-window { padding-left: 16px; border-left: 1px solid var(--line); }
 .window-label { font-size: 11px; color: #c0cad7; }
@@ -260,12 +262,17 @@ svg.edges { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
 .legend > span:last-child { margin-inline-start:0; }
 .legend span { cursor:help; }
 .projection { display:block; margin-top:5px; font:11px var(--mono); color:var(--wait); }
+.last-known .remaining { opacity:.72; }
+.last-known .usage-gauge { opacity:.55; }
 .unknown .remaining { font-size:27px; color:var(--muted); }
 .unknown .remaining small { display:block; margin:0; }
 .unknown .usage-gauge { opacity:.35; }
 .e { pointer-events:stroke; stroke:var(--sonnet); stroke-width:1.4; opacity:.28; fill:none; }
 .e.flow-result { stroke:var(--cx); stroke-dasharray:5 3; }
+.edge-label { font:600 9px var(--mono); paint-order:stroke; stroke:var(--panel); stroke-width:3px; stroke-linejoin:round; opacity:.95; pointer-events:none; }
+.edge-label.delegate { fill:var(--sonnet); } .edge-label.result { fill:var(--cx); }
 .e.fresh { opacity:.9; }
+.e.delegate { stroke:var(--sonnet); }
 .e.fallback { stroke:var(--done); stroke-dasharray:2 5; opacity:.2; }
 .e.traffic-live { animation:traffic-pulse 1.2s ease-in-out infinite alternate; }
 @keyframes traffic-pulse { from { opacity:.5; } to { opacity:1; } }
@@ -286,6 +293,82 @@ button:active:not(:disabled) { transform:scale(.99); }
 }
 @media(prefers-reduced-motion:reduce) { *,*::before,*::after { animation:none!important; transition:none!important; scroll-behavior:auto!important; } button:active:not(:disabled) { transform:none; } }
 
+
+/* ===== Mission-control theme (council: gpt-6.1-sol + Sonnet 5.5) ===== */
+:root { --bg:#05070d; --panel:rgba(13,20,34,.72); --sunk:rgba(255,255,255,.05); --ink:#eaf0ff; --muted:#93a3c0; --line:rgba(140,170,255,.15);
+  --run:#4dffb4; --wait:#ffc857; --fail:#ff6b86; --done:#7686a3; --down:#2de2ff; --up:#ff5fd2; --sonnet:#2de2ff; --cx:#ff5fd2; --opus:#a095ff;
+  --ui: "Inter Variable", Inter, ui-sans-serif, system-ui, "Vazirmatn", "Segoe UI", sans-serif; }
+body { font-family: var(--ui); font-size: 14px; background: radial-gradient(1200px 600px at 12% -10%, #14204a77, transparent), radial-gradient(900px 500px at 100% 0, #3a145055, transparent), var(--bg); background-attachment: fixed; }
+body::before { content:""; position:fixed; inset:0; pointer-events:none; z-index:-1; background: linear-gradient(var(--line) 1px, transparent 1px) 0 0/52px 52px, linear-gradient(90deg, var(--line) 1px, transparent 1px) 0 0/52px 52px; opacity:.35; -webkit-mask: radial-gradient(ellipse at 50% 0, #000, transparent 72%); mask: radial-gradient(ellipse at 50% 0, #000, transparent 72%); }
+.wrap { max-width: 3000px; padding: 28px clamp(12px, 2.5vw, 56px) 56px; gap: 24px; }
+h1 { font-size: clamp(20px, 2vw, 26px); background: linear-gradient(90deg, var(--ink), var(--down) 60%, var(--up)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.sess, .usage-card { border-radius: 16px; background: var(--panel); -webkit-backdrop-filter: blur(14px) saturate(1.2); backdrop-filter: blur(14px) saturate(1.2); border: 1px solid var(--line); box-shadow: inset 0 1px 0 rgba(255,255,255,.07), 0 24px 60px -34px #000; }
+.sess { container: session / inline-size; }
+.usage-card { container: quota / inline-size; }
+.usage-card::before, .sess::before { content:""; position:absolute; left:18px; right:18px; top:0; height:1px; background: linear-gradient(90deg, transparent, var(--down), var(--up), transparent); opacity:.55; pointer-events:none; }
+.usage-card { position: relative; }
+.usage-windows { padding: 24px; gap: 24px; }
+.remaining { font-size: clamp(32px, 5cqi, 46px); letter-spacing: -.05em; text-shadow: 0 0 28px color-mix(in srgb, var(--gauge, var(--muted)) 45%, transparent); }
+.usage-gauge { height: 8px; margin-block: 10px; border-radius: 4px; }
+.reset-clock { font-size: 12px; color: var(--ink); }
+.sess-head .title { font-size: clamp(15px, 1.3vw, 18px); }
+.row { min-height: 72px; margin: 4px 10px; border-radius: 12px; padding: 14px 18px 14px calc(34px + var(--d, 0) * 26px); gap: 5px 12px; border: 1px solid transparent; transition: background-color 160ms var(--ease-out), border-color 160ms var(--ease-out), box-shadow 160ms var(--ease-out); }
+.row + .row { border-top: 1px solid transparent; }
+.row::after { display: none; }
+.row:hover { background: rgba(255,255,255,.035); border-color: var(--line); }
+.row.running { background: color-mix(in srgb, var(--fam) 7%, transparent); border-color: color-mix(in srgb, var(--fam) 32%, transparent); box-shadow: 0 0 30px -12px var(--fam); }
+.row.done-row, .row.done { opacity: .6; }
+.dot { width: 11px; height: 11px; margin-top: 4px; background: transparent !important; border: 2px solid var(--done); border-radius: 50%; }
+.codex .dot { border-radius: 3px; }
+.running .dot { border-color: var(--run); background: var(--run) !important; box-shadow: 0 0 12px var(--run); animation: none; }
+.waiting .dot, .idle .dot { border-color: var(--wait); } .failed .dot { border-color: var(--fail); }
+.name b { font-size: 14px; }
+.badge { font-size: 11px; padding: 2px 7px; border-radius: 999px; }
+.feedcol { padding: 22px; background: rgba(8,12,22,.55); }
+.body { grid-template-columns: minmax(0, 1fr) clamp(260px, 22vw, 340px); }
+.e { stroke-width: 1.2px; opacity: .22; stroke-linejoin: round; stroke-dasharray: none; }
+.e.flow-delegate { stroke: var(--down); } .e.flow-result { stroke: var(--up); stroke-dasharray: none; }
+.e.fresh { stroke-width: 1.7px; opacity: 1; }
+.e.flow-delegate.fresh { color: var(--down); } .e.flow-result.fresh { color: var(--up); }
+.e.fallback { stroke: var(--done); stroke-dasharray: none; opacity: .38; filter: none; }
+.e.traffic-live { animation: none; }
+.particle { filter: drop-shadow(0 0 4px currentColor); }
+@container session (max-width: 900px) { .body { grid-template-columns: minmax(0, 1fr); } .feedcol { border-left: 0; border-top: 1px solid var(--line); } }
+@container quota (max-width: 360px) { .usage-windows { grid-template-columns: 1fr; } .usage-window + .usage-window { padding: 16px 0 0; border-left: 0; border-top: 1px solid var(--line); } }
+@media (min-width: 2400px) { #board { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; align-items: start; } #board > .empty { grid-column: 1 / -1; } }
+@media (max-width: 760px) { .row { margin: 3px 6px; padding-left: calc(28px + min(var(--d,0),3) * 14px); } .usage-windows { padding: 16px; gap: 16px; } .f, .mini, .alerts, .sess-x { min-height: 40px; } }
+@media (prefers-reduced-motion: reduce) { .particle { display: none; } }
+
+/* ===== Command-center units ===== */
+h1 { display: flex; flex-direction: column; gap: 2px; }
+.hud-tag { font: 600 10px var(--mono); letter-spacing: .28em; color: var(--down); -webkit-text-fill-color: var(--down); opacity: .85; }
+.provider-mark.logo { width: 22px; height: 22px; border: 0; border-radius: 7px; padding: 4px; display: inline-grid; place-items: center; color: #ffb26b; background: rgba(255,178,107,.1); box-shadow: inset 0 0 0 1px rgba(255,178,107,.35), 0 0 16px -4px rgba(255,178,107,.5); }
+.usage-card.codex-usage .provider-mark.logo { color: var(--cx); background: rgba(255,95,210,.1); box-shadow: inset 0 0 0 1px rgba(255,95,210,.35), 0 0 16px -4px rgba(255,95,210,.5); border-radius: 7px; }
+.usage-card.unavailable .provider-mark.logo { color: var(--done); box-shadow: inset 0 0 0 1px var(--line); background: transparent; }
+.name { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.unit { position: relative; flex: none; width: 28px; height: 28px; display: grid; place-items: center; --uc: var(--sonnet); }
+.unit.codex { --uc: var(--cx); } .unit.claude { --uc: #ffb26b; }
+.avatar { width: 28px; height: 28px; padding: 6px; border-radius: 9px; color: var(--uc); background: color-mix(in srgb, var(--uc) 10%, #060a14); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--uc) 45%, transparent); transition: filter 200ms var(--ease-out), box-shadow 200ms var(--ease-out); }
+.unit.codex .avatar { border-radius: 50% 50% 50% 50% / 38% 38% 38% 38%; }
+.running .avatar { box-shadow: inset 0 0 0 1px var(--uc), 0 0 18px -2px var(--uc); animation: unit-pulse 2.2s ease-in-out infinite; }
+.running .unit::after { content: ""; position: absolute; inset: -4px; border-radius: 12px; border: 1px solid var(--uc); opacity: 0; animation: unit-ping 2.2s ease-out infinite; }
+.waiting .avatar, .idle .avatar { filter: saturate(.55); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--wait) 55%, transparent); animation: unit-breathe 4s ease-in-out infinite; }
+.done .avatar, .done-row .avatar { filter: grayscale(1) brightness(.75); animation: none; box-shadow: inset 0 0 0 1px var(--line); }
+.failed .avatar { color: var(--fail); box-shadow: inset 0 0 0 1px var(--fail), 0 0 14px -4px var(--fail); animation: none; }
+@keyframes unit-pulse { 50% { box-shadow: inset 0 0 0 1px var(--uc), 0 0 26px 0 var(--uc); } }
+@keyframes unit-ping { 0% { transform: scale(.85); opacity: .7; } 100% { transform: scale(1.35); opacity: 0; } }
+@keyframes unit-breathe { 50% { opacity: .55; } }
+.state-pill { font: 700 9px var(--mono); letter-spacing: .16em; padding: 2px 7px; border-radius: 999px; color: var(--done); background: rgba(255,255,255,.05); border: 1px solid var(--line); }
+.state-pill.s-running { color: #04130c; background: var(--run); border-color: var(--run); box-shadow: 0 0 14px -2px var(--run); }
+.state-pill.s-waiting, .state-pill.s-idle { color: var(--wait); background: color-mix(in srgb, var(--wait) 10%, transparent); border-color: color-mix(in srgb, var(--wait) 40%, transparent); }
+.state-pill.s-failed { color: var(--fail); background: color-mix(in srgb, var(--fail) 12%, transparent); border-color: var(--fail); }
+.eq { display: inline-flex; align-items: flex-end; gap: 2px; height: 12px; }
+.eq i { width: 2px; background: var(--run); border-radius: 1px; height: 4px; animation: eq 900ms ease-in-out infinite; }
+.eq i:nth-child(2) { animation-delay: -.3s; } .eq i:nth-child(3) { animation-delay: -.6s; } .eq i:nth-child(4) { animation-delay: -.15s; }
+@keyframes eq { 0%, 100% { height: 3px; } 50% { height: 12px; } }
+.row.running::before { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; background: linear-gradient(100deg, transparent 35%, color-mix(in srgb, var(--fam) 14%, transparent) 50%, transparent 65%); background-size: 250% 100%; animation: scan 3.6s linear infinite; }
+@keyframes scan { from { background-position: 150% 0; } to { background-position: -50% 0; } }
+@media (prefers-reduced-motion: reduce) { .running .avatar, .running .unit::after, .eq i, .row.running::before, .waiting .avatar, .idle .avatar { animation: none !important; } }
 </style>
 </head>
 <body>
@@ -296,7 +379,7 @@ button:active:not(:disabled) { transform:scale(.99); }
     <article class="usage-card codex-usage unavailable" id="usage-codex" aria-label="Codex usage"><div class="usage-head"><span class="provider-mark" aria-hidden="true"></span><h2>Codex</h2><span class="usage-state">Connecting</span></div><div class="usage-empty">Waiting for usage data…</div></article>
   </section>
   <header class="bar">
-    <h1>Agent board</h1>
+    <h1><span class="hud-tag">◉ MISSION CONTROL</span>Agent board</h1>
     <span class="live" id="live" role="status"><i aria-hidden="true"></i><span id="status">connecting</span></span>
     <select class="alerts" id="alerts" aria-label="Notification mode"><option value="off">Alerts: Off</option><option value="sound">Alerts: Sound</option><option value="desktop">Alerts: Desktop</option></select>
   </header>
@@ -547,23 +630,23 @@ function usageCard(provider, data) {
   var card = document.getElementById('usage-' + provider);
   var events = resetEvents(data), historyOpen = card.querySelector('.usage-history[open]');
   card.classList.toggle('unavailable', !available); card.classList.toggle('limited', limited);
-  var state = !available ? 'Usage unavailable' : limited ? 'Limit reached' : stale ? 'Old reading' : observed ? 'Available' : 'Unknown';
-  var html = '<div class="usage-head"><span class="provider-mark" aria-hidden="true"></span><h2>' + name + '</h2><span class="plan">' + esc(available && data.plan || 'Plan unknown') + '</span>' + (marker ? '<span class="reset-marker" title="A usage window reset">✓</span>' : '') + '<span class="usage-state' + (limited ? ' danger' : '') + '">' + state + '</span></div>';
+  var state = !available ? 'Usage unavailable' : limited ? 'Limit reached' : stale ? 'Old reading' : observed ? 'Available' : 'No reading yet';
+  var html = '<div class="usage-head"><span class="provider-mark logo" aria-hidden="true">' + LOGOS[provider] + '</span><h2>' + name + '</h2><span class="plan">' + esc(available && data.plan || 'Plan unknown') + '</span>' + (marker ? '<span class="reset-marker" title="A usage window reset">✓</span>' : '') + '<span class="usage-state' + (limited ? ' danger' : '') + '">' + state + '</span></div>';
   if (!available) html += '<div class="usage-empty">Usage unavailable. Retrying every 15 seconds.</div>';
   else if (!windows.length) html += '<div class="usage-empty">No usage windows reported.</div>';
   else html += '<div class="usage-windows">' + windows.map(function (w, index) {
     var known = finiteNumber(w.usedPct), used = known ? Math.max(0, Math.min(100, w.usedPct)) : null;
-    var at = windowReset(w), old = windowStale(w, data, now), left = known && !old ? 100 - used : null;
+    var at = windowReset(w), old = windowStale(w, data, now), left = known ? 100 - used : null;
     var pct = left === null ? 'Unknown' : String(Math.round(left * 10) / 10) + '%';
-    if (left !== null) worstRemaining = worstRemaining === null ? left : Math.min(worstRemaining, left);
+    if (left !== null && !old) worstRemaining = worstRemaining === null ? left : Math.min(worstRemaining, left);
     var color = left === null ? 'var(--done)' : left > 40 ? 'var(--run)' : left >= 15 ? 'var(--wait)' : 'var(--fail)', label = windowLabel(w);
     var latest = events.find(function (e) { return e.window === w.id; });
-    return '<div class="usage-window' + (left === null ? ' unknown' : '') + '"' + (!old ? ' data-fresh-until="' + Math.min(at === null ? Infinity : at, (w.asOf || data.asOf) + 1800000) + '"' : '') + ' style="--gauge:' + color + ';--left:' + (left === null ? 0 : left) + '%"><span class="window-label">' + esc(label) + '</span>' + (latest && latest.kind === 'early' ? '<span class="early-reset" title="' + esc(resetDescription(latest)) + '">Early reset</span>' : '') + '<div class="remaining">' + pct + '<small>' + (left === null ? 'Current usage unknown' : 'remaining') + '</small></div><div class="usage-gauge" role="img" aria-label="' + esc(label + ': ' + (left === null ? 'remaining unknown' : left + '% remaining')) + '"><i></i></div><div class="window-meta"><span class="' + (old ? 'reset-history' : '') + '">' + (used === null ? 'No usage reading' : old ? 'Last observed ' + used + '% used' : used + '% used') + '</span></div><span class="reset-clock" data-reset="' + (at === null ? '' : at) + '"></span>' + (at !== null && at <= now ? '<span class="reset-note">Scheduled reset passed · awaiting a new usage reading</span>' : projection(provider, w, index, left)) + '<span class="usage-asof" data-asof="' + (validDate(w.asOf) ? w.asOf : validDate(data.asOf) ? data.asOf : '') + '"></span>' + '</div>';
+    return '<div class="usage-window' + (left === null ? ' unknown' : '') + (old && left !== null ? ' last-known' : '') + '"' + (!old ? ' data-fresh-until="' + Math.min(at === null ? Infinity : at, (w.asOf || data.asOf) + 1800000) + '"' : '') + ' style="--gauge:' + color + ';--left:' + (left === null ? 0 : left) + '%"><span class="window-label">' + esc(label) + '</span>' + (latest && latest.kind === 'early' ? '<span class="early-reset" title="' + esc(resetDescription(latest)) + '">Early reset</span>' : '') + '<div class="remaining">' + pct + '<small>' + (left === null ? 'No usage reading yet' : old ? 'remaining · last known' : 'remaining') + '</small></div><div class="usage-gauge" role="img" aria-label="' + esc(label + ': ' + (left === null ? 'no reading yet' : left + '% remaining' + (old ? ' (last known)' : ''))) + '"><i></i></div><div class="window-meta"><span class="' + (old ? 'reset-history' : '') + '">' + (used === null ? 'No usage reading' : old ? 'Last observed ' + used + '% used' : used + '% used') + '</span></div><span class="reset-clock" data-reset="' + (at === null ? '' : at) + '"></span>' + (at !== null && at <= now ? '<span class="reset-note">Scheduled reset passed · awaiting a new usage reading</span>' : projection(provider, w, index, left)) + (validDate(w.asOf) && w.asOf !== data.asOf ? '<span class="usage-asof" data-asof="' + w.asOf + '"></span>' : '') + '</div>';
   }).join('') + '</div>';
   var credits = available && data.resetCredits && finiteNumber(data.resetCredits.available) ? data.resetCredits : null;
-  if (credits && credits.available > 0) html += '<div class="reset-credits"><strong>' + credits.available + ' reset' + (credits.available === 1 ? '' : 's') + ' available</strong> · ' + (Array.isArray(credits.items) ? credits.items.filter(function (c) { return validDate(c.expiresAt); }).map(function (c) { return esc('expires ' + new Date(c.expiresAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })); }).join(', ') : '') + '</div>';
+  if (credits && credits.available > 0) html += '<div class="reset-credits"><strong>' + credits.available + ' reset' + (credits.available === 1 ? '' : 's') + ' available</strong> · expires ' + (Array.isArray(credits.items) ? credits.items.filter(function (c) { return validDate(c.expiresAt); }).map(function (c) { return esc(new Date(c.expiresAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })); }).join(', ') : '') + '</div>';
   html += events.length ? '<details class="usage-history"' + (historyOpen ? ' open' : '') + '><summary><strong>Reset history</strong> · ' + esc(resetDescription(events[0])) + '</summary><ol>' + events.map(function (e) { return '<li>' + esc(resetWindowLabel(data, e) + ' · ' + resetDescription(e)) + '</li>'; }).join('') + '</ol></details>' : '<div class="usage-history">Reset history · No resets observed yet</div>';
-  html += '<div class="usage-foot"><span class="usage-expiry" data-provider="' + provider + '" data-expiry="' + (available && validDate(data.expiresAt) ? data.expiresAt : '') + '"></span><span class="usage-asof" data-asof="' + (available && validDate(data.asOf) ? data.asOf : '') + '"></span></div>';
+  html += '<div class="usage-foot">' + (credits && credits.available > 0 ? '<span class="usage-credits">' + credits.available + ' reset' + (credits.available === 1 ? '' : 's') + ' left</span>' : '') + '<span class="usage-expiry" data-provider="' + provider + '" data-expiry="' + (available && validDate(data.expiresAt) ? data.expiresAt : '') + '"></span><span class="usage-asof" data-asof="' + (available && validDate(data.asOf) ? data.asOf : '') + '"></span></div>';
   setHtml(card, html);
 }
 function renderUsage() {
@@ -602,7 +685,7 @@ function tickUsage(now) {
     var hasAt = el.dataset.expiry !== '', at = Number(el.dataset.expiry), remaining = at - now, days = Math.max(0, Math.ceil(remaining / 86400000));
     el.classList.toggle('warning', hasAt && remaining < 7 * 86400000 && remaining >= 2 * 86400000);
     el.classList.toggle('danger', hasAt && remaining < 2 * 86400000);
-    textIfChanged(el, el.dataset.provider === 'claude' ? "Claude renewal date isn't stored locally" : hasAt ? 'Subscription active until ' + new Date(at).toLocaleDateString('en-US', { weekday: Math.abs(remaining) > 86400000 ? 'short' : undefined, month: 'short', day: 'numeric', year: 'numeric' }) + ' · ' + days + (days === 1 ? ' day left' : ' days left') : 'Subscription active until: unavailable');
+    textIfChanged(el, el.dataset.provider === 'claude' ? "Claude renewal date isn't stored locally" : hasAt && remaining <= 0 ? 'Subscription expired ' + new Date(at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) : hasAt ? 'Subscription active until ' + new Date(at).toLocaleDateString('en-US', { weekday: Math.abs(remaining) > 86400000 ? 'short' : undefined, month: 'short', day: 'numeric', year: 'numeric' }) + ' · ' + days + (days === 1 ? ' day left' : ' days left') : 'Subscription active until: unavailable');
   });
 }
 // Clock text is patched in place; its HTML stays constant between snapshots.
@@ -636,6 +719,17 @@ function bestVersions(sessions) {
   sessions.forEach(function (s) { (s.agents || []).forEach(function (a) { var p = parseModel(a.model); if (p.fam && p.ver > (best[p.fam] || 0)) best[p.fam] = p.ver; }); });
   return best;
 }
+var LOGOS = {
+  claude: '<svg viewBox="0 0 24 24" width="100%" height="100%" aria-hidden="true"><g stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6L5.6 18.4"/></g></svg>',
+  codex: '<svg viewBox="0 0 24 24" width="100%" height="100%" aria-hidden="true"><path d="M12 2.5l8.2 4.75v9.5L12 21.5l-8.2-4.75v-9.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8.6 9.8l2.6 2.2-2.6 2.2M12.6 14.4h3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+};
+var UNIT_STATE = { running: 'ACTIVE', waiting: 'STANDBY', idle: 'IDLE', done: 'DONE', failed: 'FAULT' };
+function unitHtml(a, st) {
+  var kind = a.kind === 'codex' ? 'codex' : 'claude', label = UNIT_STATE[st] || 'IDLE';
+  if (st === 'waiting' && a.phase === 'waiting-approval') label = 'APPROVAL';
+  return '<span class="unit ' + kind + '" title="' + esc(kind === 'codex' ? 'Codex agent' : 'Claude agent') + '"><span class="avatar">' + LOGOS[kind] + '</span></span>' +
+    '<span class="state-pill s-' + esc(st) + '">' + label + '</span>' + (st === 'running' ? '<span class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i></span>' : '');
+}
 function rowHtml(r, best, now, ended) {
   var a = r.a, mc = modelClass(a, best), end = a.endedAt || now, over = a.status === 'done' || a.status === 'failed';
   var doing = a.tool ? a.tool + (a.detail ? ' · ' + a.detail : '') : a.t3 ? (over ? (a.t3.result || a.status) : 'working') : a.kind === 'codex' ? (a.detail || 'starting') : a.status;
@@ -644,7 +738,7 @@ function rowHtml(r, best, now, ended) {
   var line = over ? [a.kind === 'codex' && !a.codex && !a.t3 ? a.detail : '', a.t3 ? '' : (a.tools || 0) + (a.kind === 'codex' ? ' cmds' : ' tools'), a.errors ? a.errors + ' err' : '', a.tokens ? tok(a.tokens) : '', dur(end - a.startedAt)].filter(Boolean).join(' · ') : doing;
   var pct = Math.max(2, Math.min(100, Math.round((a.tokens || 0) / (a.kind === 'codex' ? 1200000 : 300000) * 100)));
   return '<div role="listitem" class="row ' + mc.cls + ' ' + esc(st) + (over ? ' done-row' : '') + '" style="--d:' + r.d + '" data-id="' + esc(a.id) + '"' + (r.parent ? ' data-p="' + esc(r.parent) + '" data-edge="' + edgeState(a) + '"' : '') + ' title="' + esc((a.label || a.id) + '\\n' + (a.healthNote || '') + (a.codex && a.codex.summary ? '\\n' + a.codex.summary : '')) + '">' +
-    '<i class="dot" aria-hidden="true"></i><span class="name"><b>' + esc(clip(a.label || a.id, 70)) + '</b>' + (mc.label ? '<span class="badge" title="' + esc('Reported model: ' + (a.model || 'unknown')) + '">' + esc(mc.label) + '</span>' : '') + '</span>' +
+    '<i class="dot" aria-hidden="true"></i><span class="name">' + unitHtml(a, st) + '<b>' + esc(clip(a.label || a.id, 70)) + '</b>' + (mc.label ? '<span class="badge" title="' + esc('Reported model: ' + (a.model || 'unknown')) + '">' + esc(mc.label) + '</span>' : '') + '</span>' +
     '<span class="doing">' + esc(clip(line, 140)) + '</span>' +
     (fl ? '<span class="flag' + (a.health === 'approval' ? ' wait' : '') + '">' + esc(clip(a.healthNote || a.health, 120)) + '</span>' : third && !over ? '<span class="over">' + esc(clip(third, 120)) + '</span>' : over && third ? '<span class="over">' + esc(clip(third, 120)) + '</span>' : '') +
     '<span class="nums"><span class="t">' + clockHtml(a.startedAt, a.endedAt) + '</span>' + '<span>' + (a.tokens ? tok(a.tokens) : '0') + '</span><span class="bar-tok"><i style="width:' + (a.tokens ? pct : 0) + '%"></i></span>' + '</span></div>';
@@ -749,7 +843,8 @@ function drawEdges(tree) {
   var box = tree.getBoundingClientRect(); if (!box.height) return;
   var NS = 'http://www.w3.org/2000/svg', svg = document.createElementNS(NS, 'svg'); svg.setAttribute('class', 'edges'); svg.setAttribute('aria-label', 'Agent data flow');
   var mid = 'ah' + Math.random().toString(36).slice(2, 9), defs = document.createElementNS(NS, 'defs');
-  defs.innerHTML = '<marker id="' + mid + '" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0L7 3.5L0 7z" fill="context-stroke"/></marker>'; svg.appendChild(defs);
+  var KC = { delegate: '#2de2ff', result: '#ff5fd2', quiet: '#7686a3' }, particles = 0;
+  defs.innerHTML = Object.keys(KC).map(function (k) { return '<marker id="' + mid + k + '" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto" markerUnits="userSpaceOnUse" overflow="visible"><path d="M0 .5L8.5 4.5L0 8.5L2 4.5z" fill="' + KC[k] + '"/></marker>'; }).join(''); svg.appendChild(defs);
   function point(r) { var b = r.querySelector('.dot').getBoundingClientRect(); return { x: b.left - box.left + b.width / 2, y: b.top - box.top + b.height / 2 }; }
   function resolve(endpoint) {
     if (endpoint.nodeId && rows.has(endpoint.nodeId)) return rows.get(endpoint.nodeId);
@@ -760,11 +855,21 @@ function drawEdges(tree) {
   }
   function path(from, to, kind, at, title, fallback) {
     if (!from || !to || from === to) return;
-    var a = point(from), b = point(to), bend = Math.max(5, Math.min(a.x, b.x) - (kind === 'result' ? 8 : 14));
-    var p = document.createElementNS(NS, 'path'); p.setAttribute('d', 'M' + (a.x - 5) + ' ' + a.y + 'H' + bend + 'V' + b.y + 'H' + (b.x - 5));
+    var a = point(from), b = point(to), dy = kind === 'result' ? -3.5 : 3.5, bend = Math.max(6, Math.min(a.x, b.x) - (kind === 'result' ? 8 : 20));
+    a.y += dy; b.y += dy;
+    var x1 = a.x - 7, x2 = b.x - 8, dirY = b.y > a.y ? 1 : -1, r = Math.min(5, Math.abs(b.y - a.y) / 2), p = document.createElementNS(NS, 'path');
+    p.setAttribute('d', 'M' + x1 + ' ' + a.y + 'H' + (bend + r) + 'Q' + bend + ' ' + a.y + ' ' + bend + ' ' + (a.y + dirY * r) + 'V' + (b.y - dirY * r) + 'Q' + bend + ' ' + b.y + ' ' + (bend + r) + ' ' + b.y + 'H' + x2);
     var age = serverNow() - at, bright = !fallback && (age < 10000 || kind === 'result' && age < 60000);
     p.setAttribute('class', 'e flow-' + kind + (bright ? ' fresh' : ' quiet') + (!fallback && age >= 0 && age < 10000 ? ' traffic-live' : '') + (fallback ? ' fallback' : ''));
-    p.setAttribute('marker-end', 'url(#' + mid + ')'); var t = document.createElementNS(NS, 'title'); t.textContent = title; p.appendChild(t); svg.appendChild(p);
+    p.setAttribute('marker-end', 'url(#' + mid + (fallback ? 'quiet' : kind) + ')'); var t = document.createElementNS(NS, 'title'); t.textContent = title; p.appendChild(t); svg.appendChild(p);
+    if (bright && !fallback && particles < 3 && !(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches)) {
+      particles++; var pid = mid + 'p' + particles; p.setAttribute('id', pid);
+      [0, 0.5].forEach(function (o) {
+        var c = document.createElementNS(NS, 'circle'); c.setAttribute('r', '2.6'); c.setAttribute('class', 'particle'); c.setAttribute('fill', KC[kind]); c.style.color = KC[kind];
+        var m = document.createElementNS(NS, 'animateMotion'); m.setAttribute('dur', '1.6s'); m.setAttribute('repeatCount', 'indefinite'); m.setAttribute('begin', (-o * 1.6) + 's');
+        var mp = document.createElementNS(NS, 'mpath'); mp.setAttribute('href', '#' + pid); m.appendChild(mp); c.appendChild(m); svg.appendChild(c);
+      });
+    }
   }
   var links = linksFor(s), hasLinks = Array.isArray(s.links) && s.links.length || links.length;
   var linked = new Set();
@@ -829,7 +934,7 @@ function renderTraffic(now) {
   setHtml(el, '<h2>Cross-session traffic</h2>' + links.map(function (l) { return '<div class="exchange" title="' + esc(linkTitle(l, now)) + '"><span dir="auto">' + esc(clip(nameById(l.from.sessionId), 35)) + ' ↔ ' + esc(clip(nameById(l.to.sessionId || l.to.peer), 35)) + '</span><span class="note" dir="auto">' + esc(clip(l.preview || 'Message exchanged', 100)) + '</span><time>' + dur(now - l.at) + ' ago</time></div>'; }).join(''));
 }
 function renderLegend() {
-  setHtml(document.getElementById('legend'), '<span title="Recent activity or running child/tool">● Working: active work</span><span title="A person must approve the pending action">● Approval: review needed</span><span title="The agent is waiting for a reply">● Waiting for you: reply needed</span><span title="Child agents are still running">● Background: waiting for children</span><span title="Heartbeat missing while work remains running">● No heartbeat: connection uncertain</span><span title="Actual recorded exchanges; faint lines are old or inferred">→ Task sent · ⇢ Result returned</span>');
+  setHtml(document.getElementById('legend'), '<span title="Recent activity or running child/tool">● Working: active work</span><span title="A person must approve the pending action">● Approval: review needed</span><span title="The agent is waiting for a reply">● Waiting for you: reply needed</span><span title="Child agents are still running">● Background: waiting for children</span><span title="Heartbeat missing while work remains running">● No heartbeat: connection uncertain</span><span title="Actual recorded exchanges; faint lines are old or inferred"><b style="color:var(--sonnet)">teal ↓ task sent</b> · <b style="color:var(--cx)">pink ↑ result returned</b> · grey = inferred</span>');
 }
 function render() {
   var now = serverNow(), live = dedupedSessions(all), board = document.getElementById('board');

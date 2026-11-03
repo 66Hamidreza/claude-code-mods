@@ -4,6 +4,15 @@ All notable changes are documented here using [Keep a Changelog](https://keepach
 
 ## [Unreleased]
 
+### Changed
+
+- agent-board web: mission-control redesign (glass panels, fluid responsive layout, two-column ultrawide), per-agent units with Claude/Codex logos and ACTIVE/STANDBY/DONE/FAULT states, directional flow edges (cyan task down, pink result up, particles on fresh edges).
+
+### Fixed
+
+- agent-board web: usage cards keep the last known value instead of "Unknown"; expired subscriptions read "expired"; "N resets left" shown in the card footer; duplicate reading lines removed.
+- agent-board: child agents of Claude sessions now show token counts (Codex rollouts and Claude transcripts).
+
 ## [0.3.0] - 2026-10-27
 
 ### Fixed
