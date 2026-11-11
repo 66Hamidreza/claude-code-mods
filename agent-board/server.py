@@ -48,6 +48,9 @@ def codex_sessions_body():
         return CODEX_CACHE['body']
 
 
+STALE_AGENT_MS = 30 * 60 * 1000
+
+
 def sessions_body(directory, now_s=None):
     """One corrupt or expired session file cannot hide the other sessions."""
     now_s = time.time() if now_s is None else now_s
@@ -77,7 +80,16 @@ def sessions_body(directory, now_s=None):
             child = (agent.get('t3') or {}).get('childThreadId') if isinstance(agent, dict) else None
             if child and not agent.get('tokens') and token_map.get(child):
                 agent['tokens'] = token_map[child]
-    return json.dumps({'serverNow': int(now_s * 1000), 'sessions': list(sessions.values())}).encode()
+    now_ms = int(now_s * 1000)
+    for snapshot in sessions.values():
+        for agent in snapshot['agents']:
+            # A subagent the host never reported finished: running, no tool in flight, silent for
+            # 30+ minutes. Show it as done (inferred) instead of keeping the whole session alive.
+            if (isinstance(agent, dict) and agent.get('kind') == 'agent' and agent.get('status') == 'running'
+                    and agent.get('toolStartedAt') is None and not agent.get('t3')
+                    and isinstance(agent.get('activityAt'), (int, float)) and now_ms - agent['activityAt'] > STALE_AGENT_MS):
+                agent.update(status='done', phase='idle', health='ok', endedAt=agent['activityAt'], healthNote='finished (inferred: silent)')
+    return json.dumps({'serverNow': now_ms, 'sessions': list(sessions.values())}).encode()
 
 
 def web_page():

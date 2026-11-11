@@ -331,8 +331,22 @@ const writeSnapshot = ($: EngineInterface, at: number, isEnded = false): Promise
   return job
 }
 
+const missedPolls = new Map<string, number>()
 const syncLocal = async ($: EngineInterface, at: number) => {
-  const listed = await $.agent.list().catch(() => [])
+  let listFailed = false
+  const listed = await $.agent.list().catch(() => { listFailed = true; return [] as Awaited<ReturnType<typeof $.agent.list>> })
+  // The host drops finished agents from its list; one still "running" here that the host no
+  // longer knows (twice in a row, to ride out a transient gap) is finished, not alive.
+  if (!listFailed) {
+    const present = new Set(listed.map(info => info.id))
+    const gone = (await read($, agents)).filter(one => one.kind === 'agent' && !one.t3 && (one.status === 'running' || one.status === 'waiting') && !present.has(one.id))
+    for (const one of gone) {
+      const misses = (missedPolls.get(one.id) ?? 0) + 1
+      missedPolls.set(one.id, misses)
+      if (misses >= 2) await update($, agents, patch(one.id, n => ({ ...n, status: 'done', endedAt: at, activityAt: n.activityAt ?? at, toolStartedAt: undefined, tool: undefined, detail: undefined, approvalSince: undefined, phase: 'idle' })))
+    }
+    for (const id of [...missedPolls.keys()]) if (!gone.some(one => one.id === id)) missedPolls.delete(id)
+  }
   for (const info of listed) {
     const status = fromAgentStatus(info.status)
     await update($, agents, list =>
