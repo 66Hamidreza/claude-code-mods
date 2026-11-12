@@ -194,8 +194,89 @@ def claude_usage(now_s):
         status = 'allowed' if windows else 'unknown'
     if not any(not w['stale'] for w in windows):
         status = 'unknown'
-    # A Claude subscription end date is not stored locally.
-    return {'plan': plan, 'asOf': as_of, 'windows': windows, 'status': status, 'expiresAt': None}
+    return {'plan': plan, 'asOf': as_of, 'windows': windows, 'status': status, 'expiresAt': claude_renewal(now_s),
+            'resetCredits': claude_reset_credits(now_s)}
+
+
+CLAUDE_CREDITS = {'at': 0.0, 'value': None, 'version': None}
+
+
+def claude_cli_version():
+    """The usage API only reports reset credits to a recent CLI User-Agent, so send the installed version."""
+    if CLAUDE_CREDITS['version'] is None:
+        import subprocess
+        try:
+            out = subprocess.run([os.path.join(HOME, '.local/bin/claude'), '--version'], capture_output=True, text=True, timeout=10).stdout
+            CLAUDE_CREDITS['version'] = re.match(r'\d+\.\d+\.\d+', out.strip()).group(0)
+        except (OSError, AttributeError, subprocess.SubprocessError):
+            CLAUDE_CREDITS['version'] = '2.1.322'
+    return CLAUDE_CREDITS['version']
+
+
+def claude_reset_credits(now_s):
+    """Available Claude limit-reset grants (read-only GET, cached 5 minutes); keeps the last good value on failure."""
+    if now_s - CLAUDE_CREDITS['at'] < 300:
+        return CLAUDE_CREDITS['value']
+    CLAUDE_CREDITS['at'] = now_s
+    try:
+        with open(os.path.join(HOME, '.claude/.credentials.json')) as f:
+            token = (json.load(f).get('claudeAiOauth') or {})['accessToken']
+        req = urllib.request.Request('https://api.anthropic.com/api/oauth/usage?cedar_ember=1&skip_spend=1', headers={
+            'Authorization': 'Bearer ' + token, 'anthropic-beta': 'oauth-2025-04-20',
+            'User-Agent': 'claude-cli/%s (external, cli)' % claude_cli_version()})
+        with urllib.request.urlopen(req, timeout=8) as r:
+            block = json.loads(r.read().decode()).get('cedar_ember') or {}
+        items = []
+        for g in block.get('grants') or []:
+            ends = iso_ms(g.get('ends_at') or '') if g.get('ends_at') else None
+            if g.get('paused') or not g.get('usable_now') or not g.get('resets_left') or (ends is not None and ends <= now_s * 1000):
+                continue
+            title = 'Fable reset' if g.get('gives_back_weekly') else {'session': '5-hour reset', 'weekly': 'Weekly reset'}.get(g.get('type'), 'Full reset')
+            items += [{'title': title, 'expiresAt': ends}] * int(g['resets_left'])
+        items.sort(key=lambda c: c['expiresAt'] or 1 << 62)
+        CLAUDE_CREDITS['value'] = {'available': len(items), 'items': items} if block.get('eligible') else None
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    return CLAUDE_CREDITS['value']
+
+
+RENEWAL = {'at': 0.0, 'value': None}
+
+
+def next_anniversary(start_ms, now_s):
+    """Next monthly anniversary (same day-of-month, clamped) of start_ms after now_s, in ms."""
+    start = datetime.fromtimestamp(start_ms / 1000, timezone.utc)
+    now = datetime.fromtimestamp(now_s, timezone.utc)
+    year, month = now.year, now.month
+    for _ in range(3):
+        last = [31, 29 if year % 4 == 0 and (year % 100 or year % 400 == 0) else 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1]
+        due = start.replace(year=year, month=month, day=min(start.day, last))
+        if due > now:
+            return int(due.timestamp() * 1000)
+        year, month = (year + 1, 1) if month == 12 else (year, month + 1)
+    return None
+
+
+def claude_renewal(now_s):
+    """Next Claude billing date from the account's subscription start (read-only GET to Anthropic, cached 1 hour)."""
+    if now_s - RENEWAL['at'] < 3600 and RENEWAL['value'] and RENEWAL['value']['next'] > now_s * 1000:
+        return RENEWAL['value']['next']
+    if now_s - RENEWAL['at'] < 300:
+        return None
+    RENEWAL['at'] = now_s
+    try:
+        with open(os.path.join(HOME, '.claude/.credentials.json')) as f:
+            token = (json.load(f).get('claudeAiOauth') or {})['accessToken']
+        req = urllib.request.Request('https://api.anthropic.com/api/oauth/profile', headers={
+            'Authorization': 'Bearer ' + token, 'anthropic-beta': 'oauth-2025-04-20', 'User-Agent': 'claude-code/2.0'})
+        with urllib.request.urlopen(req, timeout=8) as r:
+            org = json.loads(r.read().decode()).get('organization') or {}
+        start = iso_ms(org.get('subscription_created_at') or '')
+        nxt = next_anniversary(start, now_s) if start and org.get('subscription_status') == 'active' else None
+        RENEWAL['value'] = {'next': nxt} if nxt else None
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    return RENEWAL['value']['next'] if RENEWAL['value'] else None
 
 
 RESET_CREDITS = {'at': 0.0, 'value': None}
