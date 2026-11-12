@@ -137,7 +137,6 @@ svg.edges { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
 .acts { margin-top: 20px; padding-top: 12px; border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 8px; }
 .acts .note { font-size: 11px; line-height: 1.6; }
 .nomatch, .empty { padding: 40px 24px; text-align: center; color: var(--muted); background: var(--panel); border: 1px dashed #435065; border-radius: 8px; }
-.usage { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 14px; }
 .usage-resets { grid-column: 1 / -1; display: grid; gap: 6px; }
 .usage-resets[hidden] { display: none; }
 .usage-reset { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; border: 1px solid var(--run); border-radius: 6px; background: var(--panel); color: var(--run); font-size: 12px; }
@@ -201,7 +200,6 @@ svg.edges { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
 }
 @media (max-width: 760px) {
   .wrap { padding: 16px 12px 36px; gap: 16px; }
-  .usage { grid-template-columns: minmax(0, 1fr); gap: 10px; }
   .body { grid-template-columns: minmax(0, 1fr); }
   .feedcol { border-left: 0; border-top: 1px solid var(--line); }
   .sess-head { grid-template-columns: minmax(0, 1fr); padding: 14px; }
@@ -232,7 +230,7 @@ svg.edges { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
 .sess-x:hover { background: var(--sunk); color: var(--ink); }
 .sess-head { padding-right: 40px; }
 .sess-head { border-radius: 8px 8px 0 0; text-align: start; }
-.session-summary { display:flex; flex-wrap:wrap; gap:6px 18px; position:sticky; top:0; z-index:5; background:var(--panel); border-block:1px solid var(--line); padding:9px 18px; color:var(--muted); font-size:11px; border-radius:0; }
+.session-summary { display:flex; flex-wrap:wrap; gap:6px 18px; position:sticky; top:var(--strip-h, 0px); z-index:5; background:var(--panel); border-block:1px solid var(--line); padding:9px 18px; color:var(--muted); font-size:11px; border-radius:0; }
 .session-summary b { color:var(--ink); }
 .closed .session-summary { border-radius:0 0 8px 8px; border-bottom:0; }
 .tools { padding:12px 18px; gap:8px; }
@@ -369,15 +367,172 @@ h1 { display: flex; flex-direction: column; gap: 2px; }
 .row.running::before { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; background: linear-gradient(100deg, transparent 35%, color-mix(in srgb, var(--fam) 14%, transparent) 50%, transparent 65%); background-size: 250% 100%; animation: scan 3.6s linear infinite; }
 @keyframes scan { from { background-position: 150% 0; } to { background-position: -50% 0; } }
 @media (prefers-reduced-motion: reduce) { .running .avatar, .running .unit::after, .eq i, .row.running::before, .waiting .avatar, .idle .avatar { animation: none !important; } }
+/* ===== Usage cards v2: per-window rows, reset credits, renewal footer (logical properties keep it RTL-safe) ===== */
+.usage-windows { display: grid; grid-template-columns: minmax(0, 1fr); padding: 6px 24px; gap: 0; }
+.uw { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name pct" "bar bar"; align-items: end; gap: 2px 16px; padding-block: 16px; }
+.uw + .uw { border-block-start: 1px solid var(--line); }
+.uw-name { grid-area: name; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
+.uw .window-label { font-size: 13px; font-weight: 600; color: var(--ink); letter-spacing: -.01em; }
+.uw-pct { grid-area: pct; font: 500 clamp(28px, 5cqi, 40px)/1.05 var(--mono); letter-spacing: -.05em; color: var(--gauge, var(--muted)); text-shadow: 0 0 26px color-mix(in srgb, var(--gauge, var(--muted)) 40%, transparent); text-align: end; white-space: nowrap; unicode-bidi: isolate; }
+.uw-pct small { font: 11px/1.4 var(--ui); letter-spacing: 0; color: var(--muted); margin-inline-start: 6px; text-shadow: none; }
+.uw-bar { grid-area: bar; min-width: 0; display: grid; gap: 8px; }
+.uw .usage-gauge { position: relative; overflow: visible; height: 8px; margin: 10px 0 0; border-radius: 4px; background: var(--sunk); }
+.uw .usage-gauge i { border-radius: 4px; min-width: 3px; }
+.uw .usage-gauge::after { border-radius: 4px; }
+.uw .usage-gauge .pace { position: absolute; z-index: 2; inset-block: -4px; inset-inline-start: var(--even, 0%); width: 2px; margin-inline-start: -1px; border-radius: 1px; background: var(--ink); opacity: .85; box-shadow: 0 0 0 1px rgba(5,7,13,.7); }
+.uw-meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; color: var(--muted); font-size: 12px; min-width: 0; }
+.uw-meta > * { min-width: 0; overflow-wrap: anywhere; }
+.uw-count { color: var(--ink); font-weight: 500; }
+.uw-abs { font-family: var(--mono); font-size: 11px; }
+.uw-pace { font-size: 11px; } .uw-pace.fast { color: var(--wait); }
+.uw .projection { display: inline; margin: 0; }
+.uw.last-known .uw-pct { opacity: .72; } .uw.last-known .usage-gauge i { opacity: .55; }
+.uw.unknown .uw-pct { font-size: 24px; color: var(--muted); } .uw.unknown .usage-gauge { opacity: .35; }
+.ucredits { margin-inline: 24px; padding-block: 14px 16px; border-block-start: 1px solid var(--line); display: grid; gap: 10px; }
+.uc-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.uc-head h3 { margin: 0; font-size: 11px; font-weight: 650; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+.uc-head span { font-size: 11px; color: var(--muted); }
+.uc-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.ucredit { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: rgba(255,255,255,.025); }
+.ucredit.confirming { border-color: color-mix(in srgb, var(--wait) 55%, transparent); }
+.uc-main { min-width: 0; display: grid; gap: 2px; }
+.uc-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.uc-title { font-size: 13px; font-weight: 600; }
+.uc-count { font: 600 10px/1.6 var(--mono); padding: 0 7px; border-radius: 999px; color: var(--run); background: color-mix(in srgb, var(--run) 12%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--run) 35%, transparent); }
+.uc-desc { font-size: 11px; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.uc-exp { font-size: 11px; color: var(--muted); } .uc-exp.soon { color: var(--wait); }
+.uc-btn { min-height: 32px; padding: 0 16px; border-radius: 8px; border: 1px solid var(--line); background: var(--sunk); color: var(--ink); font: 600 12px var(--ui); cursor: pointer; transition: transform 140ms var(--ease-out), background-color 150ms var(--ease-out), border-color 150ms var(--ease-out), opacity 150ms var(--ease-out); }
+.uc-btn.primary { border-color: color-mix(in srgb, var(--run) 50%, transparent); color: var(--run); background: color-mix(in srgb, var(--run) 9%, transparent); }
+.uc-btn.danger { border-color: color-mix(in srgb, var(--wait) 70%, transparent); color: #1a1200; background: var(--wait); }
+.uc-btn:active:not(:disabled) { transform: scale(.97); }
+.uc-btn:disabled { opacity: .42; cursor: not-allowed; }
+.uc-btn:focus-visible { outline: 2px solid var(--sonnet); outline-offset: 2px; }
+.uc-confirm { grid-column: 1 / -1; display: grid; gap: 10px; padding-block-start: 10px; border-block-start: 1px dashed var(--line); }
+.uc-confirm p { margin: 0; font-size: 12px; line-height: 1.55; color: var(--ink); overflow-wrap: anywhere; }
+.uc-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.uc-notice { padding: 9px 12px; border-radius: 10px; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; border: 1px solid; }
+.uc-notice.ok { color: var(--run); border-color: color-mix(in srgb, var(--run) 45%, transparent); background: color-mix(in srgb, var(--run) 8%, transparent); }
+.uc-notice.bad { color: var(--wait); border-color: color-mix(in srgb, var(--wait) 45%, transparent); background: color-mix(in srgb, var(--wait) 8%, transparent); }
+.usage-foot { padding-inline: 24px; }
+.usage-renew { color: var(--ink); font-size: 11px; } .usage-renew.warning { color: var(--wait); font-weight: 600; }
+@media (hover: hover) and (pointer: fine) {
+  .uc-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--ink) 12%, transparent); }
+  .uc-btn.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--run) 18%, transparent); }
+  .uc-btn.danger:hover:not(:disabled) { background: color-mix(in srgb, var(--wait) 85%, #fff); }
+}
+@media (max-width: 760px) {
+  .usage-windows { padding: 2px 16px; } .ucredits { margin-inline: 16px; } .usage-foot { padding-inline: 16px; }
+  .ucredit { grid-template-columns: minmax(0, 1fr); } .ucredit > .uc-btn { justify-self: stretch; min-height: 40px; }
+  .uc-actions .uc-btn { flex: 1 1 0; min-height: 40px; }
+}
+@media (max-width: 380px) { .uw { grid-template-columns: minmax(0, 1fr); grid-template-areas: "name" "pct" "bar"; } .uw-pct { text-align: start; } }
+/* ===== Usage strip v3: one compact sticky row, details in a popover that never pushes the board down ===== */
+html { scroll-padding-top: calc(var(--strip-h, 0px) + 12px); }
+.usage { position: sticky; top: 0; z-index: 20; padding: 8px clamp(12px, 2.5vw, 56px); background: linear-gradient(rgba(5,7,13,.94), rgba(5,7,13,.84)); -webkit-backdrop-filter: blur(18px) saturate(1.3); backdrop-filter: blur(18px) saturate(1.3); border-block-end: 1px solid var(--line); box-shadow: 0 14px 30px -22px #000; }
+.usage-strip { max-width: 3000px; margin-inline: auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.ug { position: relative; min-width: 0; --pc: #ffb26b; }
+.ug-codex { --pc: var(--cx); }
+.ug-btn { line-height: 1.2; appearance: none; width: 100%; min-height: 52px; margin: 0; padding: 7px 12px; display: flex; align-items: center; gap: 14px; font: inherit; color: var(--ink); text-align: start; cursor: pointer; border: 1px solid var(--line); border-radius: 12px; background: rgba(13,20,34,.62); box-shadow: inset 0 1px 0 rgba(255,255,255,.06); transition: background-color 150ms var(--ease-out), border-color 150ms var(--ease-out); }
+.ug-btn:active:not(:disabled) { transform: none; }
+.ug-btn:focus-visible { outline: 2px solid var(--sonnet); outline-offset: 2px; }
+.ug.open .ug-btn { border-color: color-mix(in srgb, var(--pc) 55%, var(--line)); background: rgba(20,30,52,.85); }
+.ug.limited .ug-btn { border-color: #8b4751; background: color-mix(in srgb, var(--fail) 8%, rgba(13,20,34,.62)); }
+.ug-id { display: inline-flex; align-items: center; gap: 8px; flex: none; }
+.ug-id b { font-size: 13px; font-weight: 650; letter-spacing: -.015em; }
+.ug.unavailable .ug-id b { color: var(--muted); }
+.ug .provider-mark.logo { width: 22px; height: 22px; margin: 0; }
+.ug-codex .provider-mark.logo { color: var(--cx); background: rgba(255,95,210,.1); box-shadow: inset 0 0 0 1px rgba(255,95,210,.35), 0 0 16px -4px rgba(255,95,210,.5); }
+.ug.unavailable .provider-mark.logo { color: var(--done); box-shadow: inset 0 0 0 1px var(--line); background: transparent; }
+.ug-segs { flex: 1 1 auto; min-width: 0; display: flex; gap: 14px; }
+.us { flex: 1 1 var(--w, 80px); min-width: 0; display: grid; gap: 4px; }
+.us-top { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; min-width: 0; }
+.us-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10.5px; color: var(--muted); }
+.us-pct { flex: none; font: 600 13px/1 var(--mono); letter-spacing: -.04em; color: var(--gauge, var(--muted)); unicode-bidi: isolate; }
+.us .usage-gauge { height: 4px; margin: 0; overflow: visible; border-radius: 2px; background: var(--sunk); }
+.us .usage-gauge::after { display: none; }
+.us .usage-gauge i { border-radius: 2px; min-width: 2px; }
+.us .usage-gauge .pace { position: absolute; z-index: 2; inset-block: -2px; inset-inline-start: var(--even, 0%); width: 2px; margin-inline-start: -1px; border-radius: 1px; background: var(--ink); opacity: .85; box-shadow: 0 0 0 1px rgba(5,7,13,.7); }
+.us-reset { font: 10px/1 var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; unicode-bidi: isolate; }
+.us.last-known .us-pct { opacity: .72; } .us.last-known .usage-gauge i { opacity: .5; } .us.last-known .us-reset { color: var(--wait); }
+.us.unknown .us-pct { color: var(--muted); } .us.unknown .usage-gauge { opacity: .35; }
+.ug.stale .ug-segs { opacity: .62; }
+.ug-note { flex: 1 1 auto; font-size: 12px; color: var(--muted); }
+.ug-chips { flex: none; display: inline-flex; align-items: center; gap: 6px; }
+.ug-chip { font: 600 10px/1 var(--mono); padding: 4px 8px; border-radius: 999px; color: var(--muted); border: 1px solid var(--line); white-space: nowrap; unicode-bidi: isolate; }
+.ug-chip.good { color: var(--run); border-color: color-mix(in srgb, var(--run) 38%, transparent); background: color-mix(in srgb, var(--run) 9%, transparent); }
+.ug-chip.warn { color: var(--wait); border-color: color-mix(in srgb, var(--wait) 45%, transparent); background: color-mix(in srgb, var(--wait) 9%, transparent); }
+.ug-chip.danger { color: var(--fail); border-color: color-mix(in srgb, var(--fail) 55%, transparent); background: color-mix(in srgb, var(--fail) 10%, transparent); }
+.ug-chev { width: 12px; height: 12px; color: var(--muted); transition: transform 180ms var(--ease-out); }
+.ug.open .ug-chev { transform: rotate(180deg); color: var(--ink); }
+.ug .reset-marker { margin-inline-start: -3px; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+/* Popover: absolutely positioned under its group, so opening it never moves the session list. */
+.ug-panel { position: absolute; z-index: 30; inset-block-start: calc(100% + 6px); inset-inline-start: 0; width: min(580px, calc(100vw - 24px)); max-height: calc(100dvh - var(--strip-h, 72px) - 20px); overflow: hidden auto; overscroll-behavior: contain; border-radius: 16px; background: linear-gradient(rgba(16,24,42,.985), rgba(10,15,28,.985)); box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 30px 70px -20px #000, 0 0 0 1px rgba(5,7,13,.6); transform-origin: top left; }
+.ug-codex .ug-panel { inset-inline-start: auto; inset-inline-end: 0; transform-origin: top right; }
+[dir="rtl"] .ug-panel { transform-origin: top right; } [dir="rtl"] .ug-codex .ug-panel { transform-origin: top left; }
+.ug.open .ug-panel { animation: ug-in 170ms var(--ease-out); }
+@keyframes ug-in { from { opacity: 0; transform: translateY(-4px) scale(.985); } }
+.ug-panel .usage-head { padding: 14px 18px 12px; }
+.ug-close { margin-inline-start: 6px; width: 28px; height: 28px; padding: 0; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--muted); font: 16px/1 var(--ui); cursor: pointer; }
+.ug-close:hover { color: var(--ink); background: var(--sunk); }
+.ug-panel .usage-state { margin-inline-start: auto; }
+.ug-panel .usage-windows { padding: 2px 20px; }
+.ug-panel .uw { padding-block: 12px; }
+.ug-panel .uw-pct { font-size: 30px; }
+.ug-panel .ucredits { margin-inline: 20px; }
+.ug-panel .usage-foot { padding-inline: 20px; }
+/* Early-reset notice: one slim, dismissible line. */
+.usage-resets { display: block; }
+.usage-resets[hidden] { display: none; }
+.usage-reset { display: flex; align-items: center; gap: 10px; min-height: 32px; max-height: 40px; padding: 4px 6px 4px 12px; border-radius: 10px; font-size: 12px; background: color-mix(in srgb, var(--run) 7%, var(--panel)); }
+.usage-reset.early { background: color-mix(in srgb, var(--wait) 8%, var(--panel)); }
+.usage-reset .ur-text { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.usage-reset .ur-more { flex: none; font: 10px var(--mono); opacity: .8; }
+.usage-reset .ur-x { flex: none; width: 24px; min-height: 24px; height: 24px; padding: 0; border-radius: 6px; border-color: transparent; background: transparent; color: inherit; font-size: 15px; line-height: 1; }
+/* Everything above the first session row stays short. */
+.wrap { padding-block-start: 14px; gap: 14px; }
+.bar { padding-top: 0; gap: 6px 14px; }
+h1 { flex-direction: row; align-items: baseline; gap: 4px 12px; }
+.toolbar { padding-bottom: 10px; }
+@media (hover: hover) and (pointer: fine) { .ug-btn:hover { background: rgba(26,38,66,.8); border-color: color-mix(in srgb, var(--pc) 40%, var(--line)); } .ug-close { transition: background-color 150ms var(--ease-out), color 150ms var(--ease-out); } }
+@media (max-width: 1000px) { .usage-strip { grid-template-columns: minmax(0, 1fr); gap: 6px; } .usage { padding-block: 6px; } .ug-btn { min-height: 48px; padding-block: 5px; } }
+@media (max-width: 760px) {
+  .ug { position: static; }
+  .ug-panel, .ug-codex .ug-panel { inset-inline: 0; inset-block-start: 100%; width: auto; border-radius: 0 0 16px 16px; max-height: calc(100dvh - var(--strip-h, 120px)); transform-origin: top center; }
+  .usage { padding-block: 3px; } .usage-strip { gap: 3px; }
+  .ug-btn { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "id chips" "segs segs"; gap: 2px 8px; min-height: 0; padding: 3px 10px 4px; border-radius: 10px; }
+  .ug-id { grid-area: id; } .ug-chips { grid-area: chips; } .ug-segs { grid-area: segs; gap: 10px; } .ug-note { grid-area: segs; }
+  .ug .provider-mark.logo { width: 16px; height: 16px; padding: 2px; border-radius: 5px; }
+  .ug-id { gap: 6px; } .ug-id b { font-size: 12px; }
+  .ug-chip { padding: 2px 6px; font-size: 9.5px; line-height: 1.2; }
+  .us { gap: 2px; } .us-top { height: 12px; align-items: center; line-height: 1; } .us-label { font-size: 10px; line-height: 1; } .us-pct { font-size: 12px; } .us-reset { font-size: 9.5px; }
+  .ug-btn .ug-id { min-height: 0; }
+  .bar { flex-wrap: nowrap; gap: 8px; } .bar .alerts { width: 116px; min-height: 36px; padding-inline: 8px; flex: none; } .live { font-size: 10px; min-width: 0; } h1 { font-size: 20px; flex: none; }
+  .toolbar .f { padding-inline: 7px; gap: 5px; }
+  .ug-panel .usage-windows { padding: 2px 16px; } .ug-panel .ucredits { margin-inline: 16px; } .ug-panel .usage-foot { padding-inline: 16px; }
+  .hud-tag { display: none; }
+  .legend { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; gap: 6px 16px; white-space: nowrap; padding-bottom: 2px; }
+  .legend::-webkit-scrollbar { display: none; }
+  .legend > span:last-child { flex-basis: auto; max-width: none; }
+  .wrap { padding-block-start: 10px; gap: 10px; }
+}
 </style>
 </head>
 <body>
+<section class="usage" id="usage" aria-label="Account usage">
+  <div class="usage-strip">
+    <article class="ug unavailable" id="usage-claude" aria-label="Claude usage">
+      <button type="button" class="ug-btn" id="usage-claude-btn" data-usage-toggle="claude" aria-expanded="false" aria-controls="usage-claude-panel"><span class="ug-id"><span class="provider-mark" aria-hidden="true"></span><b>Claude</b></span><span class="ug-note">Connecting…</span></button>
+      <div class="usage-card ug-panel" id="usage-claude-panel" role="region" aria-label="Claude usage details" hidden></div>
+    </article>
+    <article class="ug ug-codex unavailable" id="usage-codex" aria-label="Codex usage">
+      <button type="button" class="ug-btn" id="usage-codex-btn" data-usage-toggle="codex" aria-expanded="false" aria-controls="usage-codex-panel"><span class="ug-id"><span class="provider-mark" aria-hidden="true"></span><b>Codex</b></span><span class="ug-note">Connecting…</span></button>
+      <div class="usage-card codex-usage ug-panel" id="usage-codex-panel" role="region" aria-label="Codex usage details" hidden></div>
+    </article>
+  </div>
+</section>
 <main class="wrap">
-  <section class="usage" aria-label="Account usage">
-    <div class="usage-resets" id="usage-resets" aria-live="polite" hidden></div>
-    <article class="usage-card unavailable" id="usage-claude" aria-label="Claude usage"><div class="usage-head"><span class="provider-mark" aria-hidden="true"></span><h2>Claude</h2><span class="usage-state">Connecting</span></div><div class="usage-empty">Waiting for usage data…</div></article>
-    <article class="usage-card codex-usage unavailable" id="usage-codex" aria-label="Codex usage"><div class="usage-head"><span class="provider-mark" aria-hidden="true"></span><h2>Codex</h2><span class="usage-state">Connecting</span></div><div class="usage-empty">Waiting for usage data…</div></article>
-  </section>
+  <div class="usage-resets" id="usage-resets" aria-live="polite" hidden></div>
   <header class="bar">
     <h1><span class="hud-tag">◉ MISSION CONTROL</span>Agent board</h1>
     <span class="live" id="live" role="status"><i aria-hidden="true"></i><span id="status">connecting</span></span>
@@ -594,8 +749,9 @@ function observeResets(now) {
   return changed;
 }
 function renderResetNotices() {
-  var el = document.getElementById('usage-resets'); el.hidden = !resetNotices.size;
-  setHtml(el, Array.from(resetNotices.entries()).map(function (entry) { return '<div class="usage-reset' + (entry[1].kind === 'early' ? ' early' : '') + '"><span>' + esc(entry[1].text) + '</span><button class="mini" data-dismiss-reset="' + esc(entry[0]) + '" aria-label="Dismiss ' + esc(entry[1].text) + '">Dismiss</button></div>'; }).join(''));
+  var el = document.getElementById('usage-resets'), entries = Array.from(resetNotices.entries()), first = entries[0];
+  el.hidden = !first;
+  setHtml(el, first ? '<div class="usage-reset' + (first[1].kind === 'early' ? ' early' : '') + '"><span class="ur-text" title="' + esc(first[1].text) + '">' + esc(first[1].text) + '</span>' + (entries.length > 1 ? '<span class="ur-more">+' + (entries.length - 1) + ' more</span>' : '') + '<button type="button" class="mini ur-x" data-dismiss-reset="' + esc(first[0]) + '" aria-label="Dismiss: ' + esc(first[1].text) + '" title="Dismiss">×</button></div>' : '');
 }
 window.addEventListener('focus', function () { resetTitlePending = false; updateUsageTitle(); });
 function sampleUsage(provider, data) {
@@ -620,6 +776,109 @@ function projection(provider, w, index, left) {
   if (!validDate(at)) return '';
   return '<span class="projection" title="Estimated exhaustion time from recent usage; the pace may change">At this pace ~' + esc(new Date(at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false })) + '</span>';
 }
+var redeemState = { busy: false, pending: null, notice: null, timer: 0 }, usageAgain = false;
+var CREDIT_EFFECT = {
+  fable: "Refills your 5-hour window and Fable's weekly usage. It doesn't reset the whole week.",
+  session: 'Refills your 5-hour window.',
+  weekly: 'Refills your weekly allowance.',
+  full: 'Refills your 5-hour window and your whole week.'
+};
+function gaugeColor(left, severity) {
+  if (left === null) return 'var(--done)';
+  if (severity === 'critical' || severity === 'exhausted' || left < 15) return 'var(--fail)';
+  if (left <= 40 || severity === 'warning' || severity === 'elevated') return 'var(--wait)';
+  return 'var(--run)';
+}
+function absStamp(at) {
+  return new Date(at).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) + ' ' + clock24(at);
+}
+function shortDate(at) { return new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }); }
+// Where the gauge would sit if the allowance were used evenly across the window (percent remaining).
+function evenPace(w, at, now, left) {
+  if (left === null || at === null || !finiteNumber(w.windowMinutes) || w.windowMinutes <= 0) return null;
+  var elapsed = Math.max(0, Math.min(1, 1 - (at - now) / (w.windowMinutes * 60000)));
+  return Math.round((1 - elapsed) * 1000) / 10;
+}
+function windowRow(provider, data, w, index, events, now) {
+  var known = finiteNumber(w.usedPct), used = known ? Math.max(0, Math.min(100, w.usedPct)) : null;
+  var at = windowReset(w), old = windowStale(w, data, now), left = known ? Math.round((100 - used) * 10) / 10 : null;
+  if (left !== null && !old) worstRemaining = worstRemaining === null ? left : Math.min(worstRemaining, left);
+  var label = windowLabel(w), color = gaugeColor(left, w.severity), even = old ? null : evenPace(w, at, now, left);
+  var latest = events.find(function (e) { return e.window === w.id; });
+  var paceText = even === null || left === null ? '' : left < even - 5 ? 'Faster than even pace' : left > even + 5 ? 'Slower than even pace' : 'On even pace';
+  var passed = at !== null && at <= now;
+  var meta = '<span class="uw-count" data-count="' + (at === null ? '' : at) + '"></span>' + (at !== null ? '<span class="uw-abs">' + esc(absStamp(at)) + '</span>' : '')
+    + (paceText ? '<span class="uw-pace' + (left < even - 5 ? ' fast' : '') + '">' + paceText + '</span>' : '')
+    + (passed ? '<span class="reset-note">Scheduled reset passed · awaiting a new usage reading</span>' : projection(provider, w, index, left))
+    + (validDate(w.asOf) && w.asOf !== data.asOf ? '<span class="usage-asof" data-asof="' + w.asOf + '"></span>' : '');
+  return '<div class="uw' + (left === null ? ' unknown' : '') + (old && left !== null ? ' last-known' : '') + '"' + (!old ? ' data-fresh-until="' + Math.min(at === null ? Infinity : at, (w.asOf || data.asOf) + 1800000) + '"' : '')
+    + ' style="--gauge:' + color + ';--left:' + (left === null ? 0 : left) + '%' + (even === null ? '' : ';--even:' + even + '%') + '">'
+    + '<div class="uw-name"><span class="window-label">' + esc(label) + '</span>' + (latest && latest.kind === 'early' ? '<span class="early-reset" title="' + esc(resetDescription(latest)) + '">Early reset</span>' : '') + '</div>'
+    + '<div class="uw-pct">' + (left === null ? 'Unknown' : String(left) + '%') + '<small>' + (left === null ? 'no reading yet' : old ? 'left · last known' : 'left') + '</small></div>'
+    + '<div class="uw-bar"><div class="usage-gauge" role="img" aria-label="' + esc(label + ': ' + (left === null ? 'no reading yet' : left + '% left' + (old ? ' (last known)' : '') + (even === null ? '' : ', even pace would leave ' + even + '%'))) + '"><i></i>'
+    + (even === null ? '' : '<b class="pace" title="Even pace: ' + even + '% would be left by now"></b>') + '</div>'
+    + '<div class="uw-meta">' + (used === null ? '<span>No usage reading</span>' : old ? '<span class="reset-history">Last observed ' + used + '% used</span>' : '') + meta + '</div></div></div>';
+}
+function creditRow(provider, c, now) {
+  var pend = redeemState.pending, mine = pend && pend.provider === provider && pend.id === c.id, claude = provider === 'claude';
+  var canUse = claude && c.canUse && !!c.id && !redeemState.busy;
+  var title = c.title || 'Reset', effect = CREDIT_EFFECT[c.kind] || 'Refills your usage limits.';
+  var exp = validDate(c.expiresAt) ? c.expiresAt : null, soon = exp !== null && exp - now < 3 * 86400000;
+  var count = finiteNumber(c.count) && c.count > 0 ? c.count : 1;
+  var html = '<li class="ucredit' + (mine ? ' confirming' : '') + '"><div class="uc-main"><div class="uc-line"><b class="uc-title">' + esc(title) + '</b><span class="uc-count">' + count + ' left</span></div>'
+    + (c.description ? '<div class="uc-desc">' + esc(c.description) + '</div>' : '')
+    + '<div class="uc-exp' + (soon ? ' soon' : '') + '">' + (exp === null ? 'No expiry date' : esc(shortDate(exp)) + ' · <span data-exp="' + exp + '"></span>') + '</div></div>'
+    + '<button type="button" class="uc-btn primary" data-focus="use-' + esc(provider + '-' + c.id) + '" data-redeem-ask="' + esc(c.id) + '" data-provider="' + provider + '"'
+    + (canUse && !mine ? '' : ' disabled') + (claude ? '' : ' title="Redeem in Codex"') + (claude && !c.canUse ? ' title="Not usable right now"' : '') + '>Use</button>';
+  if (mine) {
+    var busy = pend.step === 'busy';
+    html += '<div class="uc-confirm" role="group" aria-label="Confirm ' + esc(title) + '">'
+      + (busy ? '<p role="status"><strong>Using ' + esc(title) + '…</strong> Waiting for Anthropic.</p>'
+              : '<p><strong>Use this ' + esc(title) + '?</strong> ' + esc(effect) + ' It spends one credit and cannot be undone.</p>')
+      + '<div class="uc-actions"><button type="button" class="uc-btn" data-focus="redeem-cancel" data-redeem-cancel="1"' + (busy ? ' disabled' : '') + '>Cancel</button>'
+      + '<button type="button" class="uc-btn danger" data-focus="redeem-go" data-redeem-go="' + esc(c.id) + '" data-provider="' + provider + '"' + (busy ? ' disabled' : '') + '>' + (busy ? 'Using…' : 'Use reset') + '</button></div></div>';
+  }
+  return html + '</li>';
+}
+function creditsSection(provider, credits, now) {
+  if (!credits) return '';
+  var items = Array.isArray(credits.items) ? credits.items.filter(function (c) { return c && typeof c === 'object'; }) : [];
+  var notice = redeemState.notice && redeemState.notice.provider === provider ? redeemState.notice : null;
+  return '<section class="ucredits" aria-label="Reset credits"><div class="uc-head"><h3>Resets</h3><span>' + (items.length ? credits.available + ' available' : 'None available') + '</span></div>'
+    + (notice ? '<div class="uc-notice ' + (notice.ok ? 'ok' : 'bad') + '" role="status">' + esc(notice.text) + '</div>' : '')
+    + (items.length ? '<ul class="uc-list">' + items.map(function (c) { return creditRow(provider, c, now); }).join('') + '</ul>' : '') + '</section>';
+}
+// ----- Compact strip: one slim segment per window; the full detail lives in the popover panel below -----
+var usageOpen = null, CHEV = '<svg class="ug-chev" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 4.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+function stripColor(left, severity, limited) {
+  if (left === null) return 'var(--done)';
+  if (limited || left <= 5 || severity === 'exhausted') return 'var(--fail)';
+  if (left <= 15 || severity === 'critical') return 'var(--wait)';
+  return 'var(--run)';
+}
+function stripSeg(data, w, now) {
+  var known = finiteNumber(w.usedPct), used = known ? Math.max(0, Math.min(100, w.usedPct)) : null;
+  var at = windowReset(w), old = windowStale(w, data, now), left = known ? Math.round((100 - used) * 10) / 10 : null;
+  var even = old ? null : evenPace(w, at, now, left), label = String(windowLabel(w)).replace(/ window$/, '');
+  var color = stripColor(left, w.severity, left !== null && left <= 0 && !old);
+  var title = label + ': ' + (left === null ? 'no reading yet' : left + '% left' + (old ? ' (last known)' : '')) + (at !== null ? ' · resets ' + absStamp(at) : '') + (even === null ? '' : ' · even pace would leave ' + even + '%');
+  return '<span class="us' + (left === null ? ' unknown' : '') + (old && left !== null ? ' last-known' : '') + '" title="' + esc(title) + '" style="--gauge:' + color + ';--left:' + (left === null ? 0 : left) + '%' + (even === null ? '' : ';--even:' + even + '%') + ';--w:' + Math.round(label.length * 5.4 + 40) + 'px">'
+    + '<span class="us-top"><span class="us-label">' + esc(label) + '</span><b class="us-pct">' + (left === null ? '—' : Math.round(left) + '%') + '<span class="sr"> left' + (old ? ', last known' : '') + '</span></b></span>'
+    + '<span class="usage-gauge" aria-hidden="true"><i></i>' + (even === null ? '' : '<b class="pace"></b>') + '</span>'
+    + '<span class="us-reset" data-rs="' + (at === null ? '' : at) + '"></span></span>';
+}
+function usageStrip(provider, data, ctx) {
+  var name = provider === 'claude' ? 'Claude' : 'Codex';
+  var html = '<span class="ug-id"><span class="provider-mark logo" aria-hidden="true">' + LOGOS[provider] + '</span><b>' + name + '</b>' + (ctx.marker ? '<span class="reset-marker" title="A usage window reset">✓</span>' : '') + '</span>';
+  if (!ctx.available) html += '<span class="ug-note">Usage unavailable</span>';
+  else if (!ctx.windows.length) html += '<span class="ug-note">No usage windows reported</span>';
+  else html += '<span class="ug-segs">' + ctx.windows.map(function (w) { return stripSeg(data, w, ctx.now); }).join('') + '</span>';
+  var chips = '';
+  if (ctx.limited) chips += '<span class="ug-chip danger">Limit reached</span>';
+  if (ctx.credits && ctx.credits.available > 0) chips += '<span class="ug-chip good" title="Reset credits you can use">' + ctx.credits.available + (ctx.credits.available === 1 ? ' reset' : ' resets') + '</span>';
+  if (ctx.renewAt !== null) chips += '<span class="ug-chip" data-renew-chip="' + ctx.renewAt + '"></span>';
+  return html + '<span class="ug-chips">' + chips + CHEV + '</span>';
+}
 function usageCard(provider, data) {
   var now = serverNow(), name = provider === 'claude' ? 'Claude' : 'Codex', available = data && Array.isArray(data.windows);
   var windows = available ? data.windows.filter(function (w) { return w && typeof w === 'object'; }) : [];
@@ -627,32 +886,56 @@ function usageCard(provider, data) {
   var observed = windows.some(function (w) { return finiteNumber(w.usedPct) && !windowStale(w, data, now); });
   var limited = windows.some(function (w) { return w.usedPct >= 100 && !windowStale(w, data, now); });
   var marker = Array.from(resetNotices.values()).some(function (n) { return n.provider === provider; });
-  var card = document.getElementById('usage-' + provider);
-  var events = resetEvents(data), historyOpen = card.querySelector('.usage-history[open]');
-  card.classList.toggle('unavailable', !available); card.classList.toggle('limited', limited);
+  var group = document.getElementById('usage-' + provider), panel = document.getElementById('usage-' + provider + '-panel');
+  var events = resetEvents(data), historyOpen = panel.querySelector('.usage-history[open]');
+  var credits = available && data.resetCredits && finiteNumber(data.resetCredits.available) ? data.resetCredits : null;
+  var renewAt = available ? (data.renewal && validDate(data.renewal.at) ? data.renewal.at : validDate(data.expiresAt) ? data.expiresAt : null) : null;
+  group.classList.toggle('unavailable', !available); group.classList.toggle('limited', limited); group.classList.toggle('stale', available && stale && !observed);
+  panel.classList.toggle('unavailable', !available); panel.classList.toggle('limited', limited);
+  setHtml(document.getElementById('usage-' + provider + '-btn'), usageStrip(provider, data, { available: available, windows: windows, limited: limited, marker: marker, credits: credits, renewAt: renewAt, now: now }));
   var state = !available ? 'Usage unavailable' : limited ? 'Limit reached' : stale ? 'Old reading' : observed ? 'Available' : 'No reading yet';
-  var html = '<div class="usage-head"><span class="provider-mark logo" aria-hidden="true">' + LOGOS[provider] + '</span><h2>' + name + '</h2><span class="plan">' + esc(available && data.plan || 'Plan unknown') + '</span>' + (marker ? '<span class="reset-marker" title="A usage window reset">✓</span>' : '') + '<span class="usage-state' + (limited ? ' danger' : '') + '">' + state + '</span></div>';
+  var html = '<div class="usage-head"><span class="provider-mark logo" aria-hidden="true">' + LOGOS[provider] + '</span><h2>' + name + '</h2><span class="plan">' + esc(available && data.plan || 'Plan unknown') + '</span><span class="usage-state' + (limited ? ' danger' : '') + '">' + state + '</span><button type="button" class="ug-close" data-usage-close="1" data-focus="usage-close-' + provider + '" aria-label="Close ' + name + ' details" title="Close (Esc)">×</button></div>';
   if (!available) html += '<div class="usage-empty">Usage unavailable. Retrying every 15 seconds.</div>';
   else if (!windows.length) html += '<div class="usage-empty">No usage windows reported.</div>';
-  else html += '<div class="usage-windows">' + windows.map(function (w, index) {
-    var known = finiteNumber(w.usedPct), used = known ? Math.max(0, Math.min(100, w.usedPct)) : null;
-    var at = windowReset(w), old = windowStale(w, data, now), left = known ? 100 - used : null;
-    var pct = left === null ? 'Unknown' : String(Math.round(left * 10) / 10) + '%';
-    if (left !== null && !old) worstRemaining = worstRemaining === null ? left : Math.min(worstRemaining, left);
-    var color = left === null ? 'var(--done)' : left > 40 ? 'var(--run)' : left >= 15 ? 'var(--wait)' : 'var(--fail)', label = windowLabel(w);
-    var latest = events.find(function (e) { return e.window === w.id; });
-    return '<div class="usage-window' + (left === null ? ' unknown' : '') + (old && left !== null ? ' last-known' : '') + '"' + (!old ? ' data-fresh-until="' + Math.min(at === null ? Infinity : at, (w.asOf || data.asOf) + 1800000) + '"' : '') + ' style="--gauge:' + color + ';--left:' + (left === null ? 0 : left) + '%"><span class="window-label">' + esc(label) + '</span>' + (latest && latest.kind === 'early' ? '<span class="early-reset" title="' + esc(resetDescription(latest)) + '">Early reset</span>' : '') + '<div class="remaining">' + pct + '<small>' + (left === null ? 'No usage reading yet' : old ? 'remaining · last known' : 'remaining') + '</small></div><div class="usage-gauge" role="img" aria-label="' + esc(label + ': ' + (left === null ? 'no reading yet' : left + '% remaining' + (old ? ' (last known)' : ''))) + '"><i></i></div><div class="window-meta"><span class="' + (old ? 'reset-history' : '') + '">' + (used === null ? 'No usage reading' : old ? 'Last observed ' + used + '% used' : used + '% used') + '</span></div><span class="reset-clock" data-reset="' + (at === null ? '' : at) + '"></span>' + (at !== null && at <= now ? '<span class="reset-note">Scheduled reset passed · awaiting a new usage reading</span>' : projection(provider, w, index, left)) + (validDate(w.asOf) && w.asOf !== data.asOf ? '<span class="usage-asof" data-asof="' + w.asOf + '"></span>' : '') + '</div>';
-  }).join('') + '</div>';
-  var credits = available && data.resetCredits && finiteNumber(data.resetCredits.available) ? data.resetCredits : null;
-  if (credits && credits.available > 0) html += '<div class="reset-credits"><strong>' + credits.available + ' reset' + (credits.available === 1 ? '' : 's') + ' available</strong> · expires ' + (Array.isArray(credits.items) ? credits.items.filter(function (c) { return validDate(c.expiresAt); }).map(function (c) { return esc(new Date(c.expiresAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })); }).join(', ') : '') + '</div>';
+  else html += '<div class="usage-windows">' + windows.map(function (w, index) { return windowRow(provider, data, w, index, events, now); }).join('') + '</div>';
+  html += creditsSection(provider, credits, now);
   html += events.length ? '<details class="usage-history"' + (historyOpen ? ' open' : '') + '><summary><strong>Reset history</strong> · ' + esc(resetDescription(events[0])) + '</summary><ol>' + events.map(function (e) { return '<li>' + esc(resetWindowLabel(data, e) + ' · ' + resetDescription(e)) + '</li>'; }).join('') + '</ol></details>' : '<div class="usage-history">Reset history · No resets observed yet</div>';
-  html += '<div class="usage-foot">' + (credits && credits.available > 0 ? '<span class="usage-credits">' + credits.available + ' reset' + (credits.available === 1 ? '' : 's') + ' left</span>' : '') + '<span class="usage-expiry" data-provider="' + provider + '" data-expiry="' + (available && validDate(data.expiresAt) ? data.expiresAt : '') + '"></span><span class="usage-asof" data-asof="' + (available && validDate(data.asOf) ? data.asOf : '') + '"></span></div>';
-  setHtml(card, html);
+  html += '<div class="usage-foot">' + (renewAt === null ? '<span class="usage-renew">Renewal date unavailable</span>' : '<span class="usage-renew" data-renew="' + renewAt + '"></span>') + '<span class="usage-asof" data-asof="' + (available && validDate(data.asOf) ? data.asOf : '') + '"></span></div>';
+  setHtml(panel, html);
+}
+function applyUsageOpen() {
+  ['claude', 'codex'].forEach(function (p) {
+    var open = usageOpen === p, group = document.getElementById('usage-' + p);
+    document.getElementById('usage-' + p + '-btn').setAttribute('aria-expanded', open ? 'true' : 'false');
+    document.getElementById('usage-' + p + '-panel').hidden = !open; group.classList.toggle('open', open);
+  });
+}
+function setUsageOpen(provider, refocus) {
+  usageOpen = provider || null; applyUsageOpen();
+  if (!usageOpen && refocus) { var b = document.getElementById('usage-' + refocus + '-btn'); if (b) b.focus({ preventScroll: true }); }
+}
+function syncStripHeight() { var el = document.getElementById('usage'); document.documentElement.style.setProperty('--strip-h', Math.ceil(el.getBoundingClientRect().height) + 'px'); }
+if (window.ResizeObserver) new ResizeObserver(syncStripHeight).observe(document.getElementById('usage'));
+function clearRedeemNotice() { redeemState.notice = null; renderUsage(); }
+async function redeemCredit(provider, id) {
+  if (redeemState.busy || provider !== 'claude') return;
+  redeemState.busy = true; redeemState.pending = { provider: provider, id: id, step: 'busy' }; clearTimeout(redeemState.timer); redeemState.notice = null; renderUsage();
+  var controller = new AbortController(), timeout = setTimeout(function () { controller.abort(); }, 30000), notice;
+  try {
+    var response = await fetch('usage/redeem', { method: 'POST', cache: 'no-store', signal: controller.signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ provider: provider, grantId: id }) });
+    var body = null; try { body = await response.json(); } catch (error) { body = null; }
+    notice = { provider: provider, ok: !!(body && body.ok), text: body && typeof body.message === 'string' && body.message ? body.message : 'Request failed (HTTP ' + response.status + ').' };
+  } catch (error) { notice = { provider: provider, ok: false, text: 'The request did not finish. Check your usage before trying again.' }; }
+  clearTimeout(timeout);
+  redeemState.busy = false; redeemState.pending = null; redeemState.notice = notice;
+  redeemState.timer = setTimeout(clearRedeemNotice, 15000);
+  renderUsage();
+  if (usageBusy) usageAgain = true; else pollUsage();
 }
 function renderUsage() {
   observeResets(serverNow()); worstRemaining = null;
   usageCard('claude', usageData && usageData.claude); usageCard('codex', usageData && usageData.codex);
-  renderResetNotices(); updateUsageTitle(); tickUsage(serverNow());
+  renderResetNotices(); applyUsageOpen(); syncStripHeight(); updateUsageTitle(); tickUsage(serverNow());
 }
 async function pollUsage() {
   if (usageBusy) return;
@@ -665,15 +948,28 @@ async function pollUsage() {
     if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('Invalid usage data');
     usageData = data; sampleUsage('claude', data.claude); sampleUsage('codex', data.codex);
   } catch (error) { /* Keep the last observation during a failed refresh. */ }
-  finally { clearTimeout(timeout); usageBusy = false; renderUsage(); }
+  finally { clearTimeout(timeout); usageBusy = false; renderUsage(); if (usageAgain) { usageAgain = false; setTimeout(pollUsage, 0); } }
 }
 function tickUsage(now) {
   // Expire observations between polls without inventing a confirmed reset.
   if (Array.from(document.querySelectorAll('[data-fresh-until]')).some(function (el) { return now >= Number(el.dataset.freshUntil); })) { renderUsage(); return; }
   if (observeResets(now)) { renderUsage(); return; }
-  document.querySelectorAll('[data-reset]').forEach(function (el) {
-    var hasAt = el.dataset.reset !== '', at = Number(el.dataset.reset), past = at <= now;
-    textIfChanged(el, !hasAt ? 'Reset time unavailable' : (past ? 'Scheduled reset ' : 'Resets ') + datedClock(at, now) + ' · ' + (past ? relativeTime(now - at) + ' ago' : 'in ' + relativeTime(at - now)));
+  document.querySelectorAll('[data-count]').forEach(function (el) {
+    var hasAt = el.dataset.count !== '', at = Number(el.dataset.count), past = at <= now;
+    textIfChanged(el, !hasAt ? 'Reset time unavailable' : past ? 'Reset time passed · ' + relativeTime(now - at) + ' ago' : 'Resets in ' + relativeTime(at - now));
+  });
+  document.querySelectorAll('[data-rs]').forEach(function (el) {
+    var at = el.dataset.rs === '' ? null : Number(el.dataset.rs);
+    textIfChanged(el, at === null ? 'no reset time' : at <= now ? 'reset due' : relativeTime(at - now));
+  });
+  document.querySelectorAll('[data-renew-chip]').forEach(function (el) {
+    var at = Number(el.dataset.renewChip), remaining = at - now, days = Math.max(0, Math.ceil(remaining / 86400000));
+    el.classList.toggle('warn', remaining > 0 && days <= 3);
+    textIfChanged(el, remaining <= 0 ? 'ended ' + new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : days + 'd to renew');
+    el.title = remaining <= 0 ? 'Renewal ended ' + shortDate(at) : 'Renews ' + shortDate(at);
+  });
+  document.querySelectorAll('[data-exp]').forEach(function (el) {
+    var at = Number(el.dataset.exp); textIfChanged(el, at <= now ? 'expired' : 'expires in ' + relativeTime(at - now));
   });
   document.querySelectorAll('[data-asof]').forEach(function (el) {
     var hasAt = el.dataset.asof !== '', at = Number(el.dataset.asof), stale = hasAt && now - at > 1800000;
@@ -681,11 +977,10 @@ function tickUsage(now) {
     var text = hasAt ? 'Last usage reading ' + (now - at > 86400000 ? datedClock(at, now) : clock24(at)) + ' · ' + Math.floor(Math.max(0, now - at) / 3600000) + 'h ' + Math.floor(Math.max(0, now - at) / 60000) % 60 + 'm ago' : 'Last usage reading unavailable';
     setHtml(el, esc(text) + (stale ? ' <span class="reading-old" title="' + tooltip + '">old reading</span>' : '')); el.title = tooltip;
   });
-  document.querySelectorAll('[data-expiry]').forEach(function (el) {
-    var hasAt = el.dataset.expiry !== '', at = Number(el.dataset.expiry), remaining = at - now, days = Math.max(0, Math.ceil(remaining / 86400000));
-    el.classList.toggle('warning', hasAt && remaining < 7 * 86400000 && remaining >= 2 * 86400000);
-    el.classList.toggle('danger', hasAt && remaining < 2 * 86400000);
-    textIfChanged(el, el.dataset.provider === 'claude' ? "Claude renewal date isn't stored locally" : hasAt && remaining <= 0 ? 'Subscription expired ' + new Date(at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) : hasAt ? 'Subscription active until ' + new Date(at).toLocaleDateString('en-US', { weekday: Math.abs(remaining) > 86400000 ? 'short' : undefined, month: 'short', day: 'numeric', year: 'numeric' }) + ' · ' + days + (days === 1 ? ' day left' : ' days left') : 'Subscription active until: unavailable');
+  document.querySelectorAll('[data-renew]').forEach(function (el) {
+    var at = Number(el.dataset.renew), remaining = at - now, days = Math.max(0, Math.ceil(remaining / 86400000));
+    el.classList.toggle('warning', remaining > 0 && days <= 3);
+    textIfChanged(el, remaining <= 0 ? 'Ended ' + shortDate(at) : 'Renews ' + shortDate(at) + ' · ' + days + (days === 1 ? ' day left' : ' days left'));
   });
 }
 // Clock text is patched in place; its HTML stays constant between snapshots.
@@ -975,8 +1270,14 @@ function jumpTo(sid, nodeId) {
   if (row.matches('.row')) { row.classList.add('flash'); setTimeout(function () { row.classList.remove('flash'); }, 1400); }
 }
 document.addEventListener('click', function (e) {
+  if (usageOpen && e.target.isConnected && !e.target.closest('.ug')) setUsageOpen(null);
   var t = e.target.closest('button'); if (!t) return;
+  if (t.dataset.usageToggle) { setUsageOpen(usageOpen === t.dataset.usageToggle ? null : t.dataset.usageToggle); return; }
+  if (t.dataset.usageClose) { setUsageOpen(null, t.closest('.ug').id.replace('usage-', '')); return; }
   if (t.dataset.dismissReset) { resetDismissed[t.dataset.dismissReset] = serverNow(); resetDismissed = Object.fromEntries(Object.entries(resetDismissed).sort(function (a, b) { return b[1] - a[1]; }).slice(0, 200)); store.set('usageResetDismissed', resetDismissed); resetNotices.delete(t.dataset.dismissReset); resetTitlePending = resetNotices.size > 0 && resetTitlePending; renderUsage(); return; }
+  if (t.dataset.redeemAsk) { if (!redeemState.busy) { redeemState.pending = { provider: t.dataset.provider, id: t.dataset.redeemAsk, step: 'confirm' }; redeemState.notice = null; renderUsage(); var cancel = document.querySelector('[data-redeem-cancel]'); if (cancel) cancel.focus({ preventScroll: true }); } return; }
+  if (t.dataset.redeemCancel) { if (!redeemState.busy) { var asked = redeemState.pending; redeemState.pending = null; renderUsage(); var back = asked && Array.from(document.querySelectorAll('[data-redeem-ask]')).find(function (b) { return b.dataset.redeemAsk === asked.id; }); if (back) back.focus({ preventScroll: true }); } return; }
+  if (t.dataset.redeemGo) { redeemCredit(t.dataset.provider, t.dataset.redeemGo); return; }
   var sec = t.closest('.sess'), sid = sec && sec.dataset.sid;
   if (t.matches('.sess-head')) { folded[sid] = !sec.classList.contains('closed'); store.set('closed', folded); render(); return; }
   if (t.matches('.sess-x')) { var open = all.find(function (x) { return x.sessionId === sid; }); dismissed[sid] = open ? stamp(open) : serverNow(); store.set('dismissed', dismissed); render(); return; }
@@ -997,6 +1298,11 @@ function changeAgentControls(e) {
   var sec = e.target.closest('.sess'), sid = sec.dataset.sid;
   agentControls[sid] = { q: sec.querySelector('.agent-search').value, mode: sec.querySelector('.agent-filter').value }; rowLimits[sid] = 60; render();
 }
+document.addEventListener('keydown', function (e) {
+  if (e.key !== 'Escape') return;
+  if (redeemState.pending && !redeemState.busy) { redeemState.pending = null; renderUsage(); return; }
+  if (usageOpen) { var group = document.getElementById('usage-' + usageOpen), inside = group.contains(document.activeElement); setUsageOpen(null, inside ? group.id.replace('usage-', '') : null); }
+});
 document.addEventListener('input', changeAgentControls); document.addEventListener('change', changeAgentControls);
 document.getElementById('q').addEventListener('input', render); document.getElementById('sort').addEventListener('change', render);
 window.addEventListener('resize', function () { document.querySelectorAll('.sess:not(.closed):not([hidden]) .tree').forEach(drawEdges); });

@@ -17,13 +17,14 @@ test('the entire generated browser script compiles', () => {
 
 const card = new Function('provider', 'data', 'now', helpers([
   'finiteNumber', 'validDate', 'windowReset', 'windowStale', 'windowLabel', 'clock24',
-  'resetEvents', 'resetUsed', 'resetDescription', 'resetWindowLabel', 'usageCard',
+  'resetEvents', 'resetUsed', 'resetDescription', 'resetWindowLabel', 'gaugeColor', 'absStamp', 'shortDate', 'evenPace',
+  'windowRow', 'creditRow', 'creditsSection', 'stripColor', 'stripSeg', 'usageStrip', 'usageCard',
 ]) + `
-  var html='', worstRemaining=null, resetNotices=new Map(), LOGOS={claude:'',codex:''};
+  var html='', worstRemaining=null, resetNotices=new Map(), LOGOS={claude:'',codex:''}, CHEV='';
   function serverNow(){return now}
   function esc(s){return String(s)}
   function projection(){return ''}
-  function setHtml(el,s){html=s}
+  function setHtml(el,s){html+=s}
   var document={getElementById:()=>({querySelector:()=>null,classList:{toggle:()=>{}}})};
   usageCard(provider,data);return {html,worstRemaining};
 `)
@@ -56,7 +57,7 @@ test('a passed deadline expires even a recent observation and missing usage neve
   expect(expired.html).toContain('Scheduled reset passed · awaiting a new usage reading')
   expect(expired.worstRemaining).toBeNull()
   const missing = card('codex', { asOf: now, windows: [{ id: 'five_hour' }] }, now)
-  expect(missing.html).toContain('No usage reading yet')
+  expect(missing.html).toContain('No usage reading')
   expect(missing.html).not.toContain('100% remaining')
 })
 
@@ -68,7 +69,7 @@ test('mixed-age windows show their own freshness and fresh observed usage remain
   ] }
   const mixed = card('claude', data, now)
   expect(mixed.html).toContain('Old reading')
-  expect(mixed.html).toContain('75%<small>remaining')
+  expect(mixed.html).toContain('75%<small>left')
   expect(mixed.html).toContain(`data-asof="${data.windows[0].asOf}"`)
   expect(mixed.worstRemaining).toBe(75)
   const fresh = card('claude', { ...data, windows: [data.windows[1]] }, now)

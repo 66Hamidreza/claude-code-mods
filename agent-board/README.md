@@ -23,7 +23,15 @@ No custom environment variables; `HOME` locates `~/.claude/mods-data/agent-board
 
 ## Usage header
 
-The top of the web page shows how much of the Claude and Codex limits is left (5-hour and weekly windows, reset countdowns) and the Codex subscription end date. `server.py` computes it on request from local files only: Claude from the `rate_limit_event` entries T3 Code logs under `~/.t3/userdata/logs/provider`, Codex from the newest rollout in `~/.codex/sessions`, and the plan dates from the Codex ID-token claims. No token is returned. Claude's renewal date is not stored locally and shows as unavailable; Claude data refreshes only while a T3 session is active, and the card shows when it was last updated.
+The top of the web page shows how much of the Claude and Codex limits is left (5-hour and weekly windows, reset countdowns) and the Codex subscription end date. `server.py` computes it on request from local files only: Claude from the `rate_limit_event` entries T3 Code logs under `~/.t3/userdata/logs/provider`, Codex from the newest rollout in `~/.codex/sessions`, and the plan dates from the Codex ID-token claims. No token is returned. Claude's usage windows, reset credits and renewal date come from Anthropic's usage and profile endpoints using the existing Claude login (read-only, cached) and shows as unavailable; Claude data refreshes only while a T3 session is active, and the card shows when it was last updated.
+
+### Usage strip, reset credits and Windows sessions
+
+The usage header is a compact sticky strip (one segment per window: 5-hour, Weekly, per-model weekly, Monthly, each with % left, an even-pace tick and a reset countdown, plus "N resets" and "Nd to renew" chips). Click a provider to open a floating detail panel (exact reset times, the list of reset credits with expiry and a **Use** button, renewal date) without moving the session list.
+
+- **Claude** reads `GET /api/oauth/usage?cedar_ember=1&skip_spend=1` with the Claude Code login and a `claude-cli/<installed version>` User-Agent (older versions are reported as ineligible); the renewal date is the next monthly anniversary of the subscription start from `/api/oauth/profile`. Falls back to T3's rate-limit logs.
+- **Use** (Claude only) calls `POST /usage/redeem`, which spends a real reset credit. It is guarded: local Host, same-origin, JSON only, a grant id that is in the current usable list, and an inline confirm in the UI. Codex redeem is not implemented.
+- **Windows-side T3 sessions** (T3 Code running on Windows while the board runs in WSL, including "No project" chats) are read from the Windows profile's T3 database via `/mnt/c/Users/<you>/.t3`. Set `AGENT_BOARD_WINDOWS_HOME` to pick the profile and `AGENT_BOARD_WINDOWS_LABEL` for the label; the default is the first profile that has a T3 database. Status only (no token counts).
 
 ## Always-on web board
 

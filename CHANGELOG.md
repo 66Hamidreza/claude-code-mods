@@ -4,6 +4,15 @@ All notable changes are documented here using [Keep a Changelog](https://keepach
 
 ## [Unreleased]
 
+### Added
+
+- agent-board: compact sticky usage strip with a detail popover; Claude windows (5-hour, Weekly, per-model weekly) from the usage API, per-grant reset credits with a guarded **Use** button, and renewal date with days left.
+- agent-board: Windows-side T3 sessions (including "No project") appear on the board when the board runs in WSL.
+
+### Fixed
+
+- agent-board: finished subagents no longer stay "running" on the board.
+
 ## [0.4.0] - 2026-11-03
 
 ### Changed
