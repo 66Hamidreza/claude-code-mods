@@ -12,6 +12,8 @@ The mods are *developed* in a private working copy (see the owner's workspace in
 Latest work (2026-11-03): agent-board web board redesign (glass/space theme, per-agent units, usage cards with reset detection). Tests: 43 pass for the web board; full hook suite blocked by existing `claude-code/testing` imports. Local always-on web board runs as user service `agent-board-web` (127.0.0.1:7788).
 Open: Windows hosts entry `127.0.0.1 abd` for the pretty URL (needs admin), merge Dependabot PRs, verify the redesign in a real browser.
 
+Update 2026-11-16: v0.5.0 released (agent-board usage strip, reset credits, Windows T3 sessions; t3-routing revision). t3-routing was revised from 138 logged delegations: bulk parts of a mixed task get their own fast-tier child, cross-family review only for security/data/auth/migrations, Fallback column defined, main thread stays a workhorse at medium effort. The owner's live policy files (`~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`) are the source of truth and now match `t3-routing/CLAUDE-snippet.md`; any policy change goes to all three plus `t3-routing/LOG.md` and `docs/fa/t3-routing.md`. Open: re-count fast-tier share and Claude share after ~100 more delegations.
+
 ## Not in git
 `STATUS.md`, `.collab/`, `.playwright-mcp/` (now ignored), `~/.claude/mods-data/` runtime data.
 

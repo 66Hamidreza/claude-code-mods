@@ -17,7 +17,10 @@ complexity by prompt length or language.
    deliverables; max 2 active children; children are leaves (no further delegation); parallel writers
    get disjoint paths or `isolation:"worktree"` from a committed base.
 3. Council trigger matches: council (below). Otherwise never.
-Mixed task (e.g. feature + its tests): one child, routed by the hardest part's row. Launch async
+Mixed task (e.g. feature + its tests): one child, routed by the hardest part's row. Exception: a
+separable bulk part (mechanical edits, exploration of >5 files, routine tests/fixtures/docs for code
+that is already written) goes to its own P-F child. The main thread reads <=5 files itself; wider
+reading is a P-F exploration child. Launch async
 children first, then do inline work while they run.
 Spec = goal, file paths (never contents), constraints, acceptance check, result <=15 lines as the
 child's final reply.
@@ -26,6 +29,8 @@ Always pass explicit `target.providerInstanceId`, `model`, `options`; verify the
 ## Routing table (start low, escalate on evidence)
 Tiers: P-F / P-W = primary provider's fast / workhorse model; C-F / C-W / C-D = Claude's fast / workhorse / deep model.
 Replace them with what `orchestrator_capabilities` lists for you.
+Fallback column = quality fallback (effort rule 2, after the second failure). Provider down: effort rule 3, not this column.
+A P-F row is never started on P-W; it moves up only after a failed check.
 
 | Task | Primary | Start | Escalate to | Fallback | Why |
 | --- | --- | --- | --- | --- | --- |
@@ -47,8 +52,8 @@ Replace them with what `orchestrator_capabilities` lists for you.
 | UI change in an existing design system | P-W | medium | high | C-W high | The system constrains the decisions; spec names the design skills |
 | UI: new design system or landing page | P-W | high | xhigh | C-W high | Broad visual decisions justify the budget |
 | UI visual check | Opposite-family W + browser | medium | one targeted recheck | main thread | Rendered evidence, max 2 rounds |
-| Diff review, routine | P-W (P-F for mechanical), fresh context, read-only | medium | high | C-W medium | No author context; read the diff and the check output |
-| Diff review: security, data, auth, migrations, or >200 lines | The family that did not author it, read-only | high | council on unresolved objection | main thread, noting the independence gap | Different lineage catches different bugs |
+| Diff review, routine | P-W (P-F for mechanical), fresh context, read-only | medium (high if >200 lines) | high | C-W medium | No author context; read the diff and the check output |
+| Diff review: security, data, auth, migrations | The family that did not author it, read-only | high | council on unresolved objection | main thread, noting the independence gap | Different lineage catches different bugs |
 | Council | P-W + C-W (C-D only for the most consequential) | xhigh + high | n/a | proceed with the available member | Two families, one round, read-only; rare |
 | Secrets, prod infra, irreversible ops | main thread only | n/a | n/a | stop if prerequisites are missing | Never delegated |
 
@@ -69,9 +74,9 @@ Read-only, one round, each <=45 lines; main thread synthesizes. Max 1 council pe
 If a member hits a rate limit, proceed without it; do not retry.
 
 ## Rules
-- Main-thread model: cheapest that can orchestrate.
+- Main-thread model: cheapest that can orchestrate (a workhorse at medium effort). A stronger main model does not route better and pays for the whole context on every turn; for a task that is hard to decompose, delegate the plan (Planning row) instead of raising the main model.
 - Follow the effort-rule ladder above. No identical retries.
-- Review cost: read result + `git diff --stat`; open the full diff only for risky files or a failed check. Pick the reviewer relative to the author (security/data/auth/migrations/>200 lines: the other family).
+- Review cost: read result + `git diff --stat`; open the full diff only for risky files or a failed check. Pick the reviewer relative to the author (security/data/auth/migrations: the other family).
 - Worktrees only when parallel writers touch the same files; commit locally first (uncommitted edits aren't copied).
 - Push is main-thread-only, after review and tests pass.
 - Any deviation from this table gets one line of reason in the reply.

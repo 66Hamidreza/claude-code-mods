@@ -15,7 +15,8 @@ It only takes effect where T3 tools (`delegate_task`, `orchestrator_capabilities
 ## How it works
 
 - **Session start:** read the live model catalog first; never hardcode IDs.
-- **Triage:** small or context-bound work stays inline; otherwise one delegated child, at most two at once, no nested delegation.
+- **Triage:** small or context-bound work stays inline; otherwise one delegated child, at most two at once, no nested delegation. A separable bulk part (mechanical edits, wide reading, routine tests or docs) goes to its own fast-tier child.
+- **Main thread:** a workhorse model at medium effort. A stronger one does not route better and pays for the whole context on every turn; hard-to-decompose tasks get a delegated plan instead.
 - **Routing table:** start with the cheap tier and escalate only on a failed check or real ambiguity.
 - **Council:** rare, read-only, one round, for architecture, security, irreversible changes or a root cause still unknown after one failed fix.
 - **Rules:** pushes happen only from the main thread after review and tests; secrets and prod infrastructure are never delegated.
@@ -44,10 +45,12 @@ Tiers: **P-F / P-W** = primary provider's fast / workhorse model; **C-F / C-W / 
 | UI change in an existing design system | P-W | medium | high | C-W high | The system constrains the decisions; spec names the design skills |
 | UI: new design system or landing page | P-W | high | xhigh | C-W high | Broad visual decisions justify the budget |
 | UI visual check | Opposite-family W + browser | medium | one targeted recheck | main thread | Rendered evidence, max 2 rounds |
-| Diff review, routine | P-W (P-F for mechanical), fresh context, read-only | medium | high | C-W medium | No author context; read the diff and the check output |
-| Diff review: security, data, auth, migrations, or >200 lines | The family that did not author it, read-only | high | council on unresolved objection | main thread, noting the independence gap | Different lineage catches different bugs |
+| Diff review, routine | P-W (P-F for mechanical), fresh context, read-only | medium (high if >200 lines) | high | C-W medium | No author context; read the diff and the check output |
+| Diff review: security, data, auth, migrations | The family that did not author it, read-only | high | council on unresolved objection | main thread, noting the independence gap | Different lineage catches different bugs |
 | Council | P-W + C-W (C-D only for the most consequential) | xhigh + high | n/a | proceed with the available member | Two families, one round, read-only; rare |
 | Secrets, prod infra, irreversible ops | main thread only | n/a | n/a | stop if prerequisites are missing | Never delegated |
+
+The Fallback column is the quality fallback (rule 2 below, after the second failure); a provider that is down is handled by rule 3. A fast-tier row is never started on the workhorse; it moves up only after a failed check.
 
 **How effort is chosen:**
 
