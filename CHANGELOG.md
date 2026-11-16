@@ -4,10 +4,16 @@ All notable changes are documented here using [Keep a Changelog](https://keepach
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-16
+
 ### Added
 
 - agent-board: compact sticky usage strip with a detail popover; Claude windows (5-hour, Weekly, per-model weekly) from the usage API, per-grant reset credits with a guarded **Use** button, and renewal date with days left.
 - agent-board: Windows-side T3 sessions (including "No project") appear on the board when the board runs in WSL.
+
+### Changed
+
+- t3-routing: bulk parts of a mixed task go to their own fast-tier child; cross-family review limited to security, data, auth and migrations; Fallback column defined; main-thread guidance added (see `t3-routing/LOG.md`, 2026-11-16).
 
 ### Fixed
 
