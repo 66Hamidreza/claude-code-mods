@@ -1,6 +1,6 @@
 {
   "name": "agent-board",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Live view of every agent, subagent and Codex job: terminal pane plus a local web board",
   "types": "./types/index.d.ts"
 }

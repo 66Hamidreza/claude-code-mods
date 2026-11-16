@@ -148,3 +148,5 @@ Built with Claude (Anthropic) and OpenAI Codex as AI coding collaborators. The m
 </div>
 
 Agent-board usage: Windows T3 child tokens use provider readings or identified logs; missing usage is shown as `—`, and stale quota percentages are hidden. See [agent-board](agent-board/README.md) for data-source limits.
+
+Codex usage in agent-board is fetched directly with the existing Codex login and cached for 60 seconds, so quota display does not require an active session. Recent rollout readings remain a fallback when the API is unavailable.

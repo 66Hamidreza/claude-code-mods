@@ -4,6 +4,13 @@ All notable changes are documented here using [Keep a Changelog](https://keepach
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-11-17
+
+### Fixed
+
+- agent-board: refresh Codex quota directly with the existing login, independently of active session logs. Cache successful readings for 60 seconds and retain rollout fallback without marking failed requests as fresh data.
+- agent-board: add regression coverage for idle usage, cache expiry, failed requests, stale readings and fallback selection.
+
 ## [0.5.1] - 2026-11-17
 
 ### Fixed

@@ -3,7 +3,7 @@
 
 usage.json reports how much of the Claude and Codex limits is left. Claude windows, reset credits and the
 billing renewal come from Anthropic's OAuth usage API (one shared, cached GET; the T3 Code rate_limit event logs
-are only a fallback). Codex windows come from the newest rollout, the subscription end date from the ID token
+are only a fallback). Codex windows come from a cached read-only usage GET (newest rollout as fallback), the subscription end date from the ID token
 claims, and its reset credits from one read-only GET to chatgpt.com (cached 5 minutes) using the existing Codex
 login. POST /usage/redeem spends one Claude reset credit (loopback, same-origin JSON only). No token or secret is
 ever returned or written.
@@ -510,6 +510,42 @@ def codex_reset_credits(now_s):
     return RESET_CREDITS['value']
 
 
+CODEX_USAGE_API = {'at': None, 'as_of': None, 'limits': None}
+
+
+def codex_api_limits(now_s):
+    """Read quota without requiring an active rollout; failures preserve observation age."""
+    if CODEX_USAGE_API['at'] is not None and 0 <= now_s - CODEX_USAGE_API['at'] < 60:
+        return CODEX_USAGE_API['limits'], CODEX_USAGE_API['as_of']
+    CODEX_USAGE_API['at'] = now_s
+    try:
+        with open(os.path.join(HOME, '.codex/auth.json')) as f:
+            tokens = json.load(f).get('tokens') or {}
+        req = urllib.request.Request('https://chatgpt.com/backend-api/wham/usage', headers={
+            'Authorization': 'Bearer ' + tokens['access_token'],
+            'chatgpt-account-id': tokens.get('account_id', ''), 'User-Agent': 'codex_cli_rs'})
+        with urllib.request.urlopen(req, timeout=8) as response:
+            data = json.load(response)
+        rate = data.get('rate_limit') or {}
+        limits = {'plan_type': data.get('plan_type'), 'credits': data.get('credits'),
+                  'rate_limit_reached_type': 'usage' if rate.get('limit_reached') else None}
+        for key, api_key in (('primary', 'primary_window'), ('secondary', 'secondary_window')):
+            item = rate.get(api_key)
+            if not isinstance(item, dict) or not finite_number(item.get('used_percent')):
+                continue
+            if not finite_number(item.get('reset_at')) or not finite_number(item.get('limit_window_seconds')):
+                continue
+            if item['limit_window_seconds'] <= 0:
+                continue
+            limits[key] = {'used_percent': item['used_percent'], 'resets_at': item['reset_at'],
+                           'window_minutes': item['limit_window_seconds'] / 60}
+        if any(key in limits for key in ('primary', 'secondary')):
+            CODEX_USAGE_API.update(limits=limits, as_of=int(now_s * 1000))
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        pass
+    return CODEX_USAGE_API['limits'], CODEX_USAGE_API['as_of']
+
+
 CODEX_WINDOW_KEYS = ('primary', 'secondary', 'individual_limit')
 CODEX_KEY_LABELS = {'primary': 'Primary window', 'secondary': 'Secondary window', 'individual_limit': 'Individual limit'}
 
@@ -534,6 +570,10 @@ def codex_log_windows(root, now_s):
             stamp = iso_ms(event.get('timestamp', ''))
             if isinstance(found, dict) and any(isinstance(found.get(k), dict) for k in CODEX_WINDOW_KEYS) and stamp is not None and stamp <= now_s * 1000 and (as_of is None or stamp > as_of):
                 limits, as_of = found, stamp
+    return codex_windows(limits, as_of, now_s), limits, as_of
+
+
+def codex_windows(limits, as_of, now_s):
     windows, used_ids = [], set()
     for key in CODEX_WINDOW_KEYS:
         w = (limits or {}).get(key)
@@ -546,11 +586,16 @@ def codex_log_windows(root, now_s):
         used_ids.add(wid)
         fallback = CODEX_KEY_LABELS.get(key, key.replace('_', ' ').capitalize()) if minutes is None else key.capitalize() + ' window'
         windows.append(window(wid, fallback, w.get('used_percent', 0), w.get('resets_at'), now_s, as_of, minutes))
-    return windows, limits, as_of
+    return windows
 
 
 def codex_usage(now_s):
     windows, limits, as_of = codex_log_windows(os.path.join(HOME, '.codex/sessions'), now_s)
+    source = 'logs'
+    api_limits, api_at = codex_api_limits(now_s)
+    if api_limits and api_at <= now_s * 1000 and (as_of is None or api_at >= as_of):
+        limits, as_of, source = api_limits, api_at, 'api'
+        windows = codex_windows(limits, as_of, now_s)
     expires = None
     try:
         with open(os.path.join(HOME, '.codex/auth.json')) as f:
@@ -564,7 +609,7 @@ def codex_usage(now_s):
     status = 'limited' if reached or any(w['usedPct'] >= 100 and not w['stale'] for w in windows) else 'allowed' if windows else 'unknown'
     if not any(not w['stale'] for w in windows):
         status = 'unknown'
-    return {'plan': (limits or {}).get('plan_type'), 'credits': (limits or {}).get('credits'),
+    return {'source': source, 'plan': (limits or {}).get('plan_type'), 'credits': (limits or {}).get('credits'),
             'asOf': as_of, 'windows': windows, 'status': status, 'expiresAt': expires,
             'renewal': renewal_info(expires, now_s), 'resetCredits': codex_reset_credits(now_s)}
 

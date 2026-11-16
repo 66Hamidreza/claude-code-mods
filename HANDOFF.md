@@ -24,3 +24,6 @@ Update 2026-11-16: v0.5.0 released (agent-board usage strip, reset credits, Wind
 Fix Windows T3 child usage ingestion, stale quota presentation and renewal wording. Missing usage is distinct from observed zero; provider context and cumulative log totals retain different meanings. Run `.github/scripts/test.py` plus Python unittest discovery in `agent-board` and `agent-board/hooks`. Restart the local web service after installation. Browser visual validation remains open.
 
 Release validation: 93 Bun tests and 51 Python tests passed; shell syntax, release-note extraction and whitespace checks passed.
+
+## 2026-11-17 — v0.5.2 Codex quota refresh
+Codex quota no longer depends on active rollout logs. `server.py` reads the usage endpoint with the existing login, caches for 60 seconds and uses the newest observation across API and rollout readings. Failures preserve observation age; expired renewal claims remain unknown. Four hermetic regression tests cover idle operation, cache, failure/staleness and log fallback. Local service deployed and live API quota verified. Browser visual validation remains open.
