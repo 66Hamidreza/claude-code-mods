@@ -27,3 +27,5 @@ Release validation: 93 Bun tests and 51 Python tests passed; shell syntax, relea
 
 ## 2026-11-17 — v0.5.2 Codex quota refresh
 Codex quota no longer depends on active rollout logs. `server.py` reads the usage endpoint with the existing login, caches for 60 seconds and uses the newest observation across API and rollout readings. Failures preserve observation age; expired renewal claims remain unknown. Four hermetic regression tests cover idle operation, cache, failure/staleness and log fallback. Local service deployed and live API quota verified. Browser visual validation remains open.
+
+Release confirmed: v0.5.2 published; CI and Release workflows succeeded. Validation: 93 Bun and 55 Python tests. The installed server returned fresh quota after deployment.
