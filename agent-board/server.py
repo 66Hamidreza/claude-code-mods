@@ -312,8 +312,8 @@ def renewal_info(at_ms, now_s):
     remaining = at_ms / 1000 - now_s
     days = max(0, math.ceil(remaining / 86400))
     day = datetime.fromtimestamp(at_ms / 1000, timezone.utc).strftime('%Y-%m-%d')
-    label = 'Ended %s' % day if remaining <= 0 else 'Renews %s \u00b7 %d day%s left' % (day, days, '' if days == 1 else 's')
-    return {'at': int(at_ms), 'daysLeft': days, 'label': label}
+    label = 'Renewal unknown · last reported %s' % day if remaining <= 0 else 'Renews %s \u00b7 %d day%s left' % (day, days, '' if days == 1 else 's')
+    return {'at': int(at_ms), 'daysLeft': days, 'label': label, 'stale': remaining <= 0}
 
 
 def claude_usage(now_s):
@@ -514,8 +514,8 @@ CODEX_WINDOW_KEYS = ('primary', 'secondary', 'individual_limit')
 CODEX_KEY_LABELS = {'primary': 'Primary window', 'secondary': 'Secondary window', 'individual_limit': 'Individual limit'}
 
 
-def codex_usage(now_s):
-    root = os.path.join(HOME, '.codex/sessions')
+def codex_log_windows(root, now_s):
+    """Newest valid observation wins, independently of file modification order."""
     files = sorted(glob.glob(os.path.join(root, '*/*/*/rollout-*.jsonl')), key=os.path.getmtime, reverse=True)[:15]
     limits, as_of = None, None
     for path in files:
@@ -532,7 +532,7 @@ def codex_usage(now_s):
                 continue
             found = (event.get('payload') or {}).get('rate_limits')
             stamp = iso_ms(event.get('timestamp', ''))
-            if isinstance(found, dict) and any(isinstance(found.get(k), dict) for k in CODEX_WINDOW_KEYS) and stamp is not None and (as_of is None or stamp > as_of):
+            if isinstance(found, dict) and any(isinstance(found.get(k), dict) for k in CODEX_WINDOW_KEYS) and stamp is not None and stamp <= now_s * 1000 and (as_of is None or stamp > as_of):
                 limits, as_of = found, stamp
     windows, used_ids = [], set()
     for key in CODEX_WINDOW_KEYS:
@@ -546,6 +546,11 @@ def codex_usage(now_s):
         used_ids.add(wid)
         fallback = CODEX_KEY_LABELS.get(key, key.replace('_', ' ').capitalize()) if minutes is None else key.capitalize() + ' window'
         windows.append(window(wid, fallback, w.get('used_percent', 0), w.get('resets_at'), now_s, as_of, minutes))
+    return windows, limits, as_of
+
+
+def codex_usage(now_s):
+    windows, limits, as_of = codex_log_windows(os.path.join(HOME, '.codex/sessions'), now_s)
     expires = None
     try:
         with open(os.path.join(HOME, '.codex/auth.json')) as f:

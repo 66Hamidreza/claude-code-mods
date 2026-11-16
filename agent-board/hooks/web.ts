@@ -801,7 +801,7 @@ function evenPace(w, at, now, left) {
 }
 function windowRow(provider, data, w, index, events, now) {
   var known = finiteNumber(w.usedPct), used = known ? Math.max(0, Math.min(100, w.usedPct)) : null;
-  var at = windowReset(w), old = windowStale(w, data, now), left = known ? Math.round((100 - used) * 10) / 10 : null;
+  var at = windowReset(w), old = windowStale(w, data, now), left = known && !old ? Math.round((100 - used) * 10) / 10 : null;
   if (left !== null && !old) worstRemaining = worstRemaining === null ? left : Math.min(worstRemaining, left);
   var label = windowLabel(w), color = gaugeColor(left, w.severity), even = old ? null : evenPace(w, at, now, left);
   var latest = events.find(function (e) { return e.window === w.id; });
@@ -814,7 +814,7 @@ function windowRow(provider, data, w, index, events, now) {
   return '<div class="uw' + (left === null ? ' unknown' : '') + (old && left !== null ? ' last-known' : '') + '"' + (!old ? ' data-fresh-until="' + Math.min(at === null ? Infinity : at, (w.asOf || data.asOf) + 1800000) + '"' : '')
     + ' style="--gauge:' + color + ';--left:' + (left === null ? 0 : left) + '%' + (even === null ? '' : ';--even:' + even + '%') + '">'
     + '<div class="uw-name"><span class="window-label">' + esc(label) + '</span>' + (latest && latest.kind === 'early' ? '<span class="early-reset" title="' + esc(resetDescription(latest)) + '">Early reset</span>' : '') + '</div>'
-    + '<div class="uw-pct">' + (left === null ? 'Unknown' : String(left) + '%') + '<small>' + (left === null ? 'no reading yet' : old ? 'left · last known' : 'left') + '</small></div>'
+    + '<div class="uw-pct">' + (left === null ? 'Unknown' : String(left) + '%') + '<small>' + (old ? 'awaiting fresh reading' : left === null ? 'no reading yet' : 'left') + '</small></div>'
     + '<div class="uw-bar"><div class="usage-gauge" role="img" aria-label="' + esc(label + ': ' + (left === null ? 'no reading yet' : left + '% left' + (old ? ' (last known)' : '') + (even === null ? '' : ', even pace would leave ' + even + '%'))) + '"><i></i>'
     + (even === null ? '' : '<b class="pace" title="Even pace: ' + even + '% would be left by now"></b>') + '</div>'
     + '<div class="uw-meta">' + (used === null ? '<span>No usage reading</span>' : old ? '<span class="reset-history">Last observed ' + used + '% used</span>' : '') + meta + '</div></div></div>';
@@ -858,14 +858,14 @@ function stripColor(left, severity, limited) {
 }
 function stripSeg(data, w, now) {
   var known = finiteNumber(w.usedPct), used = known ? Math.max(0, Math.min(100, w.usedPct)) : null;
-  var at = windowReset(w), old = windowStale(w, data, now), left = known ? Math.round((100 - used) * 10) / 10 : null;
+  var at = windowReset(w), old = windowStale(w, data, now), left = known && !old ? Math.round((100 - used) * 10) / 10 : null;
   var even = old ? null : evenPace(w, at, now, left), label = String(windowLabel(w)).replace(/ window$/, '');
   var color = stripColor(left, w.severity, left !== null && left <= 0 && !old);
-  var title = label + ': ' + (left === null ? 'no reading yet' : left + '% left' + (old ? ' (last known)' : '')) + (at !== null ? ' · resets ' + absStamp(at) : '') + (even === null ? '' : ' · even pace would leave ' + even + '%');
+  var title = label + ': ' + (old && known ? 'stale reading; last observed ' + used + '% used' : left === null ? 'no reading yet' : left + '% left') + (at !== null ? ' · resets ' + absStamp(at) : '') + (even === null ? '' : ' · even pace would leave ' + even + '%');
   return '<span class="us' + (left === null ? ' unknown' : '') + (old && left !== null ? ' last-known' : '') + '" title="' + esc(title) + '" style="--gauge:' + color + ';--left:' + (left === null ? 0 : left) + '%' + (even === null ? '' : ';--even:' + even + '%') + ';--w:' + Math.round(label.length * 5.4 + 40) + 'px">'
     + '<span class="us-top"><span class="us-label">' + esc(label) + '</span><b class="us-pct">' + (left === null ? '—' : Math.round(left) + '%') + '<span class="sr"> left' + (old ? ', last known' : '') + '</span></b></span>'
     + '<span class="usage-gauge" aria-hidden="true"><i></i>' + (even === null ? '' : '<b class="pace"></b>') + '</span>'
-    + '<span class="us-reset" data-rs="' + (at === null ? '' : at) + '"></span></span>';
+    + '<span class="us-reset" data-rs="' + (old || at === null ? '' : at) + '">' + (old ? 'stale' : '') + '</span></span>';
 }
 function usageStrip(provider, data, ctx) {
   var name = provider === 'claude' ? 'Claude' : 'Codex';
@@ -960,13 +960,13 @@ function tickUsage(now) {
   });
   document.querySelectorAll('[data-rs]').forEach(function (el) {
     var at = el.dataset.rs === '' ? null : Number(el.dataset.rs);
-    textIfChanged(el, at === null ? 'no reset time' : at <= now ? 'reset due' : relativeTime(at - now));
+    textIfChanged(el, el.dataset.rs === '' && el.textContent === 'stale' ? 'stale' : at === null ? 'no reset time' : at <= now ? 'awaiting reading' : relativeTime(at - now));
   });
   document.querySelectorAll('[data-renew-chip]').forEach(function (el) {
     var at = Number(el.dataset.renewChip), remaining = at - now, days = Math.max(0, Math.ceil(remaining / 86400000));
     el.classList.toggle('warn', remaining > 0 && days <= 3);
-    textIfChanged(el, remaining <= 0 ? 'ended ' + new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : days + 'd to renew');
-    el.title = remaining <= 0 ? 'Renewal ended ' + shortDate(at) : 'Renews ' + shortDate(at);
+    textIfChanged(el, remaining <= 0 ? 'renewal unknown · last ' + new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : days + 'd to renew');
+    el.title = remaining <= 0 ? 'Last reported renewal date (subscription status unknown): ' + shortDate(at) : 'Renews ' + shortDate(at);
   });
   document.querySelectorAll('[data-exp]').forEach(function (el) {
     var at = Number(el.dataset.exp); textIfChanged(el, at <= now ? 'expired' : 'expires in ' + relativeTime(at - now));
@@ -980,7 +980,7 @@ function tickUsage(now) {
   document.querySelectorAll('[data-renew]').forEach(function (el) {
     var at = Number(el.dataset.renew), remaining = at - now, days = Math.max(0, Math.ceil(remaining / 86400000));
     el.classList.toggle('warning', remaining > 0 && days <= 3);
-    textIfChanged(el, remaining <= 0 ? 'Ended ' + shortDate(at) : 'Renews ' + shortDate(at) + ' · ' + days + (days === 1 ? ' day left' : ' days left'));
+    textIfChanged(el, remaining <= 0 ? 'Renewal unknown · last reported ' + shortDate(at) : 'Renews ' + shortDate(at) + ' · ' + days + (days === 1 ? ' day left' : ' days left'));
   });
 }
 // Clock text is patched in place; its HTML stays constant between snapshots.
@@ -1036,7 +1036,7 @@ function rowHtml(r, best, now, ended) {
     '<i class="dot" aria-hidden="true"></i><span class="name">' + unitHtml(a, st) + '<b>' + esc(clip(a.label || a.id, 70)) + '</b>' + (mc.label ? '<span class="badge" title="' + esc('Reported model: ' + (a.model || 'unknown')) + '">' + esc(mc.label) + '</span>' : '') + '</span>' +
     '<span class="doing">' + esc(clip(line, 140)) + '</span>' +
     (fl ? '<span class="flag' + (a.health === 'approval' ? ' wait' : '') + '">' + esc(clip(a.healthNote || a.health, 120)) + '</span>' : third && !over ? '<span class="over">' + esc(clip(third, 120)) + '</span>' : over && third ? '<span class="over">' + esc(clip(third, 120)) + '</span>' : '') +
-    '<span class="nums"><span class="t">' + clockHtml(a.startedAt, a.endedAt) + '</span>' + '<span>' + (a.tokens ? tok(a.tokens) : '0') + '</span><span class="bar-tok"><i style="width:' + (a.tokens ? pct : 0) + '%"></i></span>' + '</span></div>';
+    '<span class="nums"><span class="t">' + clockHtml(a.startedAt, a.endedAt) + '</span>' + '<span>' + (finiteNumber(a.tokens) ? tok(a.tokens) : '—') + '</span><span class="bar-tok"><i style="width:' + (a.tokens ? pct : 0) + '%"></i></span>' + '</span></div>';
 }
 function spark(values) {
   var v = values.length ? values : [0], top = Math.max(1, Math.max.apply(null, v)), n = v.length;

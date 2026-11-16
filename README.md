@@ -146,3 +146,5 @@ Built with Claude (Anthropic) and OpenAI Codex as AI coding collaborators. The m
 [مجوز MIT](LICENSE) · [تغییرات](CHANGELOG.md) · [امنیت](SECURITY.md) · [راهنماهای فارسی](docs/fa/index.md)
 
 </div>
+
+Agent-board usage: Windows T3 child tokens use provider readings or identified logs; missing usage is shown as `—`, and stale quota percentages are hidden. See [agent-board](agent-board/README.md) for data-source limits.

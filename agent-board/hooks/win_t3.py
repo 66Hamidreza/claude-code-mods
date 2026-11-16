@@ -5,10 +5,12 @@ Nothing on the Windows side writes agent-board snapshots, so this scanner builds
 database. It never raises: a missing or unreadable store yields no sessions.
 """
 import json
+import math
 import shutil
 import sqlite3
 import os
 import tempfile
+import threading
 import time
 from contextlib import closing
 from datetime import datetime
@@ -28,6 +30,7 @@ DEFAULT_ROOT = default_root()
 DEFAULT_LABEL = os.environ.get('AGENT_BOARD_WINDOWS_LABEL', 'Windows')
 WINDOW = 24 * 3600 * 1000       # only threads active in the last 24h
 RUNNING = 2 * 60 * 1000          # turn-item activity this recent means running
+FINISHED_NATIVE = 30 * 60 * 1000  # finished provider-native children linger this long
 LIVE_RUN = 10 * 60 * 1000        # an in-flight run stays running this long while silent
 TERMINAL_REQUEST = ('resolved', 'cancelled', 'canceled', 'expired', 'completed', 'failed', 'interrupted')
 
@@ -47,6 +50,41 @@ def load(text):
     return value if isinstance(value, dict) else {}
 
 
+def token_number(value):
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) and value >= 0
+
+
+def log_tokens(path, driver):
+    """Codex cumulative total; Claude deduplicated billable message usage, as on Linux."""
+    total, messages = None, {}
+    with open(path, encoding='utf-8', errors='replace') as stream:
+        for line in stream:
+            if '"usage"' not in line and '"token_count"' not in line:
+                continue
+            event = load(line)
+            if driver == 'codex':
+                payload = event.get('payload')
+                if not isinstance(payload, dict):
+                    continue
+                if payload.get('type') != 'token_count':
+                    continue
+                info = payload.get('info')
+                usage = info.get('total_token_usage') if isinstance(info, dict) else None
+                value = usage.get('total_tokens') if isinstance(usage, dict) else None
+                if token_number(value):
+                    total = value
+            else:
+                msg = event.get('message')
+                usage = msg.get('usage') if isinstance(msg, dict) else None
+                keys = ('input_tokens', 'output_tokens', 'cache_creation_input_tokens')
+                if not isinstance(usage, dict) or not any(k in usage for k in keys):
+                    continue
+                values = [usage.get(k, 0) for k in keys]
+                if msg.get('id') and usage and all(token_number(v) for v in values):
+                    messages[msg['id']] = sum(values)
+    return total if driver == 'codex' else sum(messages.values()) if messages else None
+
+
 def effort_of(selection):
     for option in selection.get('options') or []:
         if isinstance(option, dict) and option.get('id') in ('effort', 'reasoningEffort'):
@@ -55,7 +93,7 @@ def effort_of(selection):
 
 
 def child_node(row, activity, approvals, inputs, effort):
-    _, subid, child, _, status, started, completed, title, driver, model = row
+    _, subid, child, _, status, started, completed, title, driver, model = row[:10]
     status = ('done' if status == 'completed' else 'failed' if status in (
         'failed', 'cancelled', 'canceled', 'interrupted', 'error') else 'waiting' if status in (
         'waiting', 'pending_approval', 'pending_input') else 'idle' if status == 'idle' else 'running')
@@ -67,7 +105,7 @@ def child_node(row, activity, approvals, inputs, effort):
     at = max(started_at, activity, ended_at)
     node = dict(id='t3-' + subid, parentId='main', kind='codex' if driver == 'codex' else 'agent',
                 label=title or model or 'T3 child', type=driver or 't3', model=model or '', status=status,
-                tools=0, errors=1 if status == 'failed' else 0, steps=0, turns=0, tokens=0,
+                tools=0, errors=1 if status == 'failed' else 0, steps=0, turns=0, tokens=None,
                 startedAt=started_at, lastEventAt=at, activityAt=at, recent=[], health='ok',
                 phase='idle' if over else 'waiting-approval' if approvals else 'waiting-user' if inputs
                 else 'thinking' if status == 'running' else 'waiting-children' if status == 'waiting' else 'idle',
@@ -101,7 +139,7 @@ def read_state(db):
                                 parent=lineage.get('parentThreadId'),
                                 isChild=bool(lineage.get('parentThreadId')
                                              and lineage.get('relationshipToParent') == 'subagent'),
-                                settled=p.get('settledOverride') == 'settled', tokens=0)
+                                settled=p.get('settledOverride') == 'settled', tokens=None, nativeId=None)
         activity = {tid: stamp(at) for tid, at in c.execute('''select thread_id, max(updated_at)
             from orchestration_v2_projection_turn_items group by thread_id''')}
         runs = {}
@@ -121,13 +159,17 @@ def read_state(db):
             t = threads.get(tid)
             if t:
                 t['driver'] = driver or t['driver']
-                usage = load(payload).get('contextUsage') or {}
-                t['tokens'] = usage.get('usedTokens') or t['tokens']
+                usage = load(payload).get('contextUsage')
+                value = usage.get('usedTokens') if isinstance(usage, dict) else None
+                if token_number(value):
+                    t['tokens'] = value
+                t['nativeId'] = (load(payload).get('nativeThreadRef') or {}).get('nativeId')
         subagents = {}
         for row in c.execute('''select thread_id, subagent_id, child_thread_id, origin, status, started_at,
                 completed_at, json_extract(payload_json, '$.title'), json_extract(payload_json, '$.driver'),
-                json_extract(payload_json, '$.model') from orchestration_v2_projection_subagents'''):
-            if row[3] == 'app_owned' and row[2]:
+                json_extract(payload_json, '$.model'), json_extract(payload_json, '$.nativeTaskRef.nativeId')
+                from orchestration_v2_projection_subagents'''):
+            if row[3] in ('app_owned', 'provider_native') and row[2]:
                 subagents.setdefault(row[0], []).append(row)
     return dict(projects=projects, threads=threads, activity=activity, runs=runs, pending=pending,
                 subagents=subagents)
@@ -135,12 +177,40 @@ def read_state(db):
 
 class WindowsT3Scanner:
     def __init__(self, root=DEFAULT_ROOT, label=DEFAULT_LABEL):
+        self.root = Path(root)
+        self.usage_cache = {}
         self.db = Path(root) / '.t3/userdata/statev2.sqlite'
         self.label = label
         self.tmp = None
         self.key = None
         self.state = None
         self.seq = 0
+        self.lock = threading.Lock()
+        self.loaded_at = 0.0
+        self.refresh_s = 20.0
+
+    def usage(self, driver, native_id):
+        """Only read the provider log identified by this agent; absence is not zero."""
+        if not isinstance(native_id, str) or not native_id or any(c not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_' for c in native_id):
+            return None
+        if driver == 'codex':
+            paths = (self.root / '.codex/sessions').glob('*/*/*/rollout-*' + native_id + '.jsonl')
+        else:
+            paths = list((self.root / '.claude/projects').glob('*/' + native_id + '.jsonl'))
+            paths += list((self.root / '.claude/projects').glob('*/*/subagents/agent-' + native_id + '.jsonl'))
+        for path in paths:
+            try:
+                st = path.stat()
+                key = (st.st_mtime_ns, st.st_size)
+                hit = self.usage_cache.get(path)
+                if hit is None or hit[0] != key:
+                    hit = (key, log_tokens(path, driver))
+                    self.usage_cache[path] = hit
+                if hit[1] is not None:
+                    return hit[1]
+            except OSError:
+                continue
+        return None
 
     def _fingerprint(self):
         out = []
@@ -166,17 +236,31 @@ class WindowsT3Scanner:
                     raise
         return read_state(target)
 
+    def _refresh(self):
+        # Copying the live DB over /mnt/c takes ~10s; one refresher at a time, never on a request thread.
+        if not self.lock.acquire(blocking=False):
+            return
+        try:
+            key = self._fingerprint()
+            if key == self.key and self.state is not None:
+                return
+            for attempt in range(2):  # the copy can race a writer checkpointing the WAL
+                try:
+                    self.state = self._copy_and_read()
+                    self.key = key
+                    return
+                except (sqlite3.Error, OSError, ValueError, TypeError, AttributeError):
+                    time.sleep(0.05)
+        finally:
+            self.loaded_at = time.time()
+            self.lock.release()
+
     def _load(self):
-        key = self._fingerprint()
-        if key == self.key and self.state is not None:
-            return self.state
-        for attempt in range(2):  # the copy can race a writer checkpointing the WAL
-            try:
-                self.state = self._copy_and_read()
-                self.key = key
-                return self.state
-            except (sqlite3.Error, OSError, ValueError, TypeError, AttributeError):
-                time.sleep(0.05)
+        # Serve the last snapshot immediately; refresh in the background at most every refresh_s.
+        if self.state is None and self.loaded_at == 0.0:
+            self._refresh()  # first call only (blocking) so tests and cold start get data
+        elif time.time() - self.loaded_at >= self.refresh_s and not self.lock.locked():
+            threading.Thread(target=self._refresh, daemon=True).start()
         return self.state
 
     def close(self):
@@ -223,7 +307,7 @@ class WindowsT3Scanner:
             project, root = state['projects'].get(t['projectId'], ('No project', ''))
             cwd = t['cwd'] or root
             main = dict(id='main', kind='main', label=t['title'] or project, type='main', model=t['model'],
-                        status=status, detail='', tools=0, errors=0, steps=0, turns=0, tokens=t['tokens'],
+                        status=status, detail='', tools=0, errors=0, steps=0, turns=0, tokens=t['tokens'] if t['tokens'] is not None else self.usage(t['driver'], t.get('nativeId')),
                         startedAt=t['createdAt'] or at, lastEventAt=at, activityAt=at, phase=phase, recent=[],
                         health='idle' if status == 'idle' else 'ok',
                         t3=dict(threadId=tid, driver=t['driver'], effort=t['effort']))
@@ -234,9 +318,17 @@ class WindowsT3Scanner:
             agents = [main]
             for row in state['subagents'].get(tid, []):
                 child = row[2]
-                agents.append(child_node(row, state['activity'].get(child, 0),
-                                         *state['pending'].get(child, (0, 0)),
-                                         (state['threads'].get(child) or {}).get('effort')))
+                if row[3] == 'provider_native' and row[4] in ('completed', 'failed', 'cancelled', 'canceled', 'interrupted') \
+                        and now - (stamp(row[6]) or stamp(row[5])) > FINISHED_NATIVE:
+                    continue  # native Task children pile up; show only recently finished ones
+                node = child_node(row, state['activity'].get(child, 0),
+                                  *state['pending'].get(child, (0, 0)),
+                                  (state['threads'].get(child) or {}).get('effort'))
+                ct = state['threads'].get(child) or {}
+                node['tokens'] = ct.get('tokens')
+                if node['tokens'] is None:
+                    node['tokens'] = self.usage(row[8], ct.get('nativeId') or (row[10] if len(row) > 10 else None))
+                agents.append(node)
             live = any(a['status'] in ('running', 'waiting') for a in agents)
             updated = max(a['activityAt'] for a in agents)
             out.append(dict(

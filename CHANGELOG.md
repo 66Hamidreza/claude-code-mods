@@ -4,6 +4,14 @@ All notable changes are documented here using [Keep a Changelog](https://keepach
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-11-17
+
+### Fixed
+
+- agent-board: recover Windows T3 child usage from provider context readings and identified Claude/Codex logs; show unavailable usage separately from an observed zero.
+- agent-board: hide stale quota percentages, reject future-dated Codex observations, and avoid treating an old renewal date as subscription cancellation.
+- agent-board: align history fixtures with observation timestamps and add quota and child-usage regressions.
+
 ## [0.5.0] - 2026-11-16
 
 ### Added

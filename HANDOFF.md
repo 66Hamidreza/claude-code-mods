@@ -19,3 +19,8 @@ Update 2026-11-16: v0.5.0 released (agent-board usage strip, reset credits, Wind
 
 ## فارسی
 بازار افزونه‌های Claude Code. این ریپو عمومی است؛ نسخهٔ خصوصی `claude-mods` است که در `~/.claude/mods` زندگی می‌کند. چیزی محرمانه در این ریپو نگذارید.
+
+## 2026-11-17 — v0.5.1
+Fix Windows T3 child usage ingestion, stale quota presentation and renewal wording. Missing usage is distinct from observed zero; provider context and cumulative log totals retain different meanings. Run `.github/scripts/test.py` plus Python unittest discovery in `agent-board` and `agent-board/hooks`. Restart the local web service after installation. Browser visual validation remains open.
+
+Release validation: 93 Bun tests and 51 Python tests passed; shell syntax, release-note extraction and whitespace checks passed.
