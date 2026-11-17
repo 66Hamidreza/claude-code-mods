@@ -4,9 +4,17 @@ All notable changes are documented here using [Keep a Changelog](https://keepach
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-17
+
+### Added
+
 - Add `tools/ox`: OpenCode free-model delegation wrapper with benchmark, and a P-Free routing row in t3-routing.
 - Add read-only OpenCode session discovery, including nested child sessions.
 - Keep idle sessions out of Ended for 24 hours and mark usage readings stale after 6 hours.
+
+### Fixed
+
+- agent-board: align usage staleness and session-order tests with the 6-hour staleness window and stable live ordering; CI is green again.
 
 ## [0.5.2] - 2026-11-17
 

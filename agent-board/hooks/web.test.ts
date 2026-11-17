@@ -33,9 +33,9 @@ test('expired and three-hour-old usage stays unknown for both providers and wind
   const now = Date.UTC(2026, 9, 27, 10)
   for (const provider of ['claude', 'codex']) {
     for (const resetsAt of [(now - 1000) / 1000, (now + 86400000) / 1000]) {
-      const { html, worstRemaining } = card(provider, { asOf: now - 3 * 3600000, windows: [
-        { id: 'five_hour', usedPct: 87, resetsAt, asOf: now - 3 * 3600000 },
-        { id: 'weekly', usedPct: 42, resetsAt, asOf: now - 3 * 3600000 },
+      const { html, worstRemaining } = card(provider, { asOf: now - 7 * 3600000, windows: [
+        { id: 'five_hour', usedPct: 87, resetsAt, asOf: now - 7 * 3600000 },
+        { id: 'weekly', usedPct: 42, resetsAt, asOf: now - 7 * 3600000 },
       ] }, now)
       expect(html).toContain('Old reading')
       expect(html.match(/last known/g)?.length).toBeGreaterThanOrEqual(2)
@@ -64,7 +64,7 @@ test('a passed deadline expires even a recent observation and missing usage neve
 test('mixed-age windows show their own freshness and fresh observed usage remains available', () => {
   const now = Date.UTC(2026, 9, 27, 10)
   const data = { asOf: now, windows: [
-    { id: 'five_hour', usedPct: 80, asOf: now - 3 * 3600000 },
+    { id: 'five_hour', usedPct: 80, asOf: now - 7 * 3600000 },
     { id: 'weekly', usedPct: 25, asOf: now, resetsAt: (now + 60000) / 1000 },
   ] }
   const mixed = card('claude', data, now)

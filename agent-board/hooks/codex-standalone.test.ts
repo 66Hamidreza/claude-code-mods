@@ -228,7 +228,7 @@ test('All excludes old ended sessions while preserving recent, waiting, running 
   expect(run()).toBe(true)
 })
 
-test('session order ignores activity timestamp churn and debounces severity changes by five seconds', () => {
+test('session order ignores activity timestamp churn and keeps a stable order when severity changes', () => {
   const run = new Function(webHelpers(['finiteNumber', 'stamp', 'sessionName', 'orderedSessions']) + `
     var pinned={},sortState=new Map(),stableOrder=[],sortMode=null,infos=new Map([['a',{sev:2}],['b',{sev:2}]]);
     var a={sessionId:'a',updatedAt:100},b={sessionId:'b',updatedAt:50};
@@ -236,9 +236,9 @@ test('session order ignores activity timestamp churn and debounces severity chan
     if(order(0)!=='ab')throw Error('Initial order');
     b.updatedAt=200;if(order(1000)!=='ab')throw Error('Timestamp reordered rows');
     infos.get('b').sev=3;if(order(2000)!=='ab'||order(6999)!=='ab')throw Error('Severity moved too soon');
-    if(order(7000)!=='ba')throw Error('Severity did not move after debounce');
+    if(order(7000)!=='ab')throw Error('Severity reordered a live list');
     infos.get('a').sev=3;order(8000);infos.get('a').sev=2;order(9000);
-    if(order(14000)!=='ba')throw Error('Transient severity changed order');
+    if(order(14000)!=='ab')throw Error('Transient severity changed order');
     return true;
   `)
   expect(run()).toBe(true)

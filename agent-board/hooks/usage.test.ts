@@ -13,7 +13,7 @@ test('expired and old quota readings never show current remaining percentages', 
   const now = 1794787200000
   for (const w of [
     { usedPct: 99, resetsAt: now / 1000 - 1, asOf: now - 1000 },
-    { usedPct: 16, resetsAt: now / 1000 + 3600, asOf: now - 1800000 },
+    { usedPct: 16, resetsAt: now / 1000 + 3600, asOf: now - 7 * 3600000 },
     { usedPct: 16, resetsAt: now / 1000 + 3600 },
   ]) {
     const html = render({}, { id: 'five_hour', ...w }, now)
