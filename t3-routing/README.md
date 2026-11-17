@@ -24,9 +24,11 @@ It only takes effect where T3 tools (`delegate_task`, `orchestrator_capabilities
 ## Who gets what, why, and at what effort
 
 Tiers: **P-F / P-W** = primary provider's fast / workhorse model; **C-F / C-W / C-D** = Claude's fast / workhorse / deep model. The author's current mapping (names go stale; resolve them from `orchestrator_capabilities`): P-F = gpt-6-luna, P-W = gpt-6.1-sol, C-F = Haiku 5.5, C-W = Sonnet 5.5, C-D = Opus 5.5.
+P-Free = free-tier models from a provider such as OpenCode, used only for non-sensitive work (task data leaves your machine). Timeout, empty output or provider error: try the next free model, then P-F.
 
 | Task | Primary | Start | Escalate to | Fallback | Why |
 | --- | --- | --- | --- | --- | --- |
+| Mechanical edits, renames, lookups, log summaries, docs/fixture drafts: exact spec + runnable check, no secrets or private data | P-Free | default | P-F low | C-F medium | Free quota; a failed check costs one cheap retry |
 | Mechanical edits, formatting, renames | P-F | low | P-W medium | C-F medium | Exact spec; the check proves it |
 | Lookup, inventory, log summaries | P-F | low | P-F medium, then P-W medium | C-F medium | Retrieval is cheap; interpretation costs more |
 | Repo exploration (>5 files), architecture map | P-F | medium | P-W medium | C-W high | Breadth over depth; result is a short file:line map |

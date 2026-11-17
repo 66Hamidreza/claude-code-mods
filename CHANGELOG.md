@@ -4,6 +4,7 @@ All notable changes are documented here using [Keep a Changelog](https://keepach
 
 ## [Unreleased]
 
+- Add `tools/ox`: OpenCode free-model delegation wrapper with benchmark, and a P-Free routing row in t3-routing.
 - Add read-only OpenCode session discovery, including nested child sessions.
 - Keep idle sessions out of Ended for 24 hours and mark usage readings stale after 6 hours.
 

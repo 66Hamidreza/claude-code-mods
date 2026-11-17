@@ -2,6 +2,11 @@
 
 Newest first. One entry per change: date, what changed, why (the observed failure or cost).
 
+## 2026-11-17
+- Added a P-Free row (OpenCode free models) ahead of P-F for mechanical edits, lookups, log summaries and docs/fixture drafts with an exact spec and a runnable check; never for secrets, private data, auth/DB/infra.
+- Evidence: `tools/ox/bench.py`, 12 free models x 3 synthetic tasks, 34/36 pass; default nemotron-3.5-super-vl-free, then iceman-free, inkling-2-small-free (single run each, 35-120 s per task). Failed check or error falls back to P-F.
+- Re-check after ~30 P-Free delegations: pass rate and fallback rate.
+
 ## 2026-11-16
 - Evidence: 138 logged delegations since 2026-10-27. Fast tier (P-F) got 1 of them although 7 rows name it; Claude models got 59 (43%) although the priority is to save Claude quota.
 - Mixed-task rule now splits off a separable bulk part (mechanical edits, >5-file exploration, routine tests/fixtures/docs) to its own P-F child, and a P-F row may not start on P-W.

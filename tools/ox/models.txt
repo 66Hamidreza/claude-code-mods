@@ -1,0 +1,12 @@
+opencode/nemotron-3.5-super-vl-free
+opencode/iceman-free
+opencode/inkling-2-small-free
+opencode/deepseek-v4.1-flash-free
+opencode/mimo-v2.6-flash-free
+opencode/hy4-flash-free
+opencode/big-pickle
+opencode/glm-5.3-flash-free
+opencode/longcat-2.5-free
+opencode/flint-40b-free
+opencode/nemotron-3.5-lightning-free
+opencode/beam-free

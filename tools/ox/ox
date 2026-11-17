@@ -1,0 +1,202 @@
+#!/usr/bin/env python3
+"""ox: delegate a small task to a free OpenCode model; never commit."""
+import argparse
+import json
+import math
+import os
+from pathlib import Path
+import re
+import signal
+import subprocess
+import sys
+import time
+import uuid
+
+HERE = Path(__file__).resolve().parent
+ANSI = re.compile(r'\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))')
+SECRET = re.compile(r'^(?:\.env.*|.*\.(?:pem|key)|id_.*|.*token.*|auth\.json|credentials(?:\..*)?)$', re.I)
+ERROR = re.compile(r'rate.?limit|too many requests|quota exceeded|provider.?error|overloaded|unauthorized|\b429\b', re.I)
+
+
+def secret_path(path):
+    return any(SECRET.fullmatch(p) for p in Path(path).parts)
+
+
+def safe_tree(root):
+    if secret_path(root):
+        raise ValueError('secret-like target path')
+    def walk_error(error):
+        raise error
+    for base, dirs, files in os.walk(root, followlinks=False, onerror=walk_error):
+        for name in dirs + files:
+            p = Path(base) / name
+            if secret_path(p.relative_to(root)):
+                raise ValueError('target contains a secret-like path')
+            if p.is_symlink() and not p.resolve().is_relative_to(root):
+                raise ValueError('target contains a symlink outside the target')
+
+
+def clean_output(raw):
+    """Use text events when available, with ANSI/plain output compatibility."""
+    raw = ANSI.sub('', raw)
+    texts, errors, plain = [], [], []
+    last_message = None
+    for line in raw.splitlines():
+        try:
+            event = json.loads(line)
+        except ValueError:
+            if not re.match(r'^\s*>\s*build\s*[·•]', line):
+                plain.append(line)
+            continue
+        if not isinstance(event, dict):
+            continue
+        if event.get('type') == 'text':
+            part = event.get('part', {})
+            message = part.get('messageID')
+            if message and message != last_message:
+                texts.clear()
+                last_message = message
+            texts.append(part.get('text', event.get('text', '')))
+        elif event.get('type') == 'error':
+            errors.append(str(event.get('error', event)))
+    return '\n'.join(texts or plain).strip(), '\n'.join(errors)
+
+
+def kill_tree(proc):
+    # OpenCode's private server and tool shells can create their own process groups.
+    pairs = [tuple(map(int, line.split())) for line in subprocess.check_output(
+        ['ps', '-eo', 'pid=,ppid='], text=True).splitlines()]
+    descendants = {proc.pid}
+    while True:
+        extra = {pid for pid, parent in pairs if parent in descendants} - descendants
+        if not extra:
+            break
+        descendants.update(extra)
+    for pid in descendants:
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+
+
+def run_model(model, prompt, root, timeout):
+    start = time.monotonic()
+    executable = os.environ.get('OX_OPENCODE', 'opencode')
+    try:
+        proc = subprocess.Popen([executable, '--standalone', 'run', '--auto', '--format', 'json',
+                                 '-m', model, prompt], cwd=root, stdin=subprocess.DEVNULL,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                start_new_session=True, text=True)
+        try:
+            out, err = proc.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            kill_tree(proc)
+            proc.communicate()
+            return '', time.monotonic() - start, 'timeout'
+        text, event_error = clean_output(out)
+        reason = event_error or (f'exit {proc.returncode}' if proc.returncode else '')
+        if not reason and ERROR.search(err + '\n' + text):
+            reason = 'provider error/rate limit'
+        if not reason and not text:
+            reason = 'empty output'
+        return text, time.monotonic() - start, reason
+    except OSError as exc:
+        return '', time.monotonic() - start, str(exc)
+
+
+def record_check(path, status):
+    lines = [line for line in path.read_text().splitlines()
+             if not re.match(r'^\W*Check result\b', line, re.I)]
+    path.write_text('\n'.join(lines[:14] + ['Check result: ' + status]) + '\n')
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('-m', metavar='model')
+    parser.add_argument('-t', metavar='taskname')
+    parser.add_argument('-c', metavar='check')
+    parser.add_argument('-d', default='.', metavar='dir')
+    parser.add_argument('-T', type=float, default=180, metavar='timeout_s')
+    parser.add_argument('prompt', nargs='?')
+    args = parser.parse_args()
+    try:
+        root = Path(args.d).resolve(strict=True)
+        if not root.is_dir() or not math.isfinite(args.T) or args.T <= 0:
+            raise ValueError('target must be a directory; timeout must be positive')
+        if bool(args.t) == bool(args.prompt):
+            raise ValueError('provide either -t taskname or a prompt')
+        sid = os.environ.get('CLAUDE_CODE_SESSION_ID', '')
+        if not re.fullmatch(r'[A-Za-z0-9._-]+', sid) or sid in ('.', '..') or secret_path(sid):
+            raise ValueError('CLAUDE_CODE_SESSION_ID must be set to a safe session name')
+        name = args.t or ('adhoc-' + uuid.uuid4().hex[:12])
+        if not re.fullmatch(r'[A-Za-z0-9_-]+', name) or secret_path(name):
+            raise ValueError('invalid or secret-like task name')
+        safe_tree(root)
+        base = root / '.collab' / sid
+        task = base / 'tasks' / (name + '.md')
+        result = base / 'results' / (name + '.md')
+        spec = task.read_text() if args.t else args.prompt
+        # Reject secret-like path references before sending any task to a provider.
+        if any(secret_path(s.strip("`\"'(),:;[]{}<>")) for s in spec.split()):
+            raise ValueError('task references a secret-like path')
+        models = [s.strip() for s in (HERE / 'models.txt').read_text().splitlines()
+                  if s.strip() and not s.startswith('#')]
+        if args.m:
+            selected = args.m if '/' in args.m else 'opencode/' + args.m
+            if selected not in models:
+                raise ValueError('model must be listed in models.txt')
+            models = [selected] + [m for m in models if m != selected]
+        if not models or any(not re.fullmatch(r'opencode/[a-z0-9.-]+', m) for m in models):
+            raise ValueError('invalid model configuration')
+        task.parent.mkdir(parents=True, exist_ok=True)
+        result.parent.mkdir(parents=True, exist_ok=True)
+        if not args.t:
+            task.write_text(spec + '\n')
+        prompt = (f'Work only inside {root}; use absolute paths or cd there in shell commands. '
+                  'Never ask questions; choose sensible defaults. '
+                  'Never run git. Never read or modify secrets, credentials, .env files, keys or tokens. '
+                  f'Execute this task:\n{spec}\n'
+                  f'Write {result.relative_to(root)} in at most 15 lines with fields '
+                  'Changed / Files / Assumptions / Blockers / Check result. '
+                  'Your final response must follow the task requested output format.')
+        for model in models:
+            safe_tree(root)
+            result.unlink(missing_ok=True)
+            output, seconds, error = run_model(model, prompt, root, args.T)
+            if error:
+                print(f'ox: {model}: {error} ({seconds:.1f}s); trying fallback', file=sys.stderr)
+                continue
+            safe_tree(root)
+            # Some models omit the requested artifact. Keep the protocol complete.
+            if not result.exists():
+                result.write_text('Changed: see model output\nFiles: unverified\n'
+                                  'Assumptions: model omitted result file\nBlockers: none reported\n'
+                                  'Check result: not run by wrapper\n')
+            lines = result.read_text().splitlines()
+            result.write_text('\n'.join(lines[:15]) + '\n')
+            print(output)
+            if args.c:
+                try:
+                    check = subprocess.Popen(['bash', '-c', args.c], cwd=root,
+                                             start_new_session=True)
+                    check.wait(timeout=args.T)
+                except subprocess.TimeoutExpired:
+                    kill_tree(check)
+                    check.wait()
+                    record_check(result, 'wrapper check timed out')
+                    print('ox: check timed out', file=sys.stderr)
+                    return 1
+                if check.returncode:
+                    record_check(result, f'wrapper check failed (exit {check.returncode})')
+                    print('ox: check failed; partial edits remain', file=sys.stderr)
+                    return 1
+                record_check(result, 'wrapper check passed')
+            return 0
+        return 2
+    except (OSError, ValueError) as exc:
+        print(f'ox: {exc}', file=sys.stderr)
+        return 2
+
+
+if __name__ == '__main__':
+    sys.exit(main())
