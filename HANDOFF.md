@@ -29,3 +29,6 @@ Release validation: 93 Bun tests and 51 Python tests passed; shell syntax, relea
 Codex quota no longer depends on active rollout logs. `server.py` reads the usage endpoint with the existing login, caches for 60 seconds and uses the newest observation across API and rollout readings. Failures preserve observation age; expired renewal claims remain unknown. Four hermetic regression tests cover idle operation, cache, failure/staleness and log fallback. Local service deployed and live API quota verified. Browser visual validation remains open.
 
 Release confirmed: v0.5.2 published; CI and Release workflows succeeded. Validation: 93 Bun and 55 Python tests. The installed server returned fresh quota after deployment.
+
+## 2026-11-17 — P-Free routing + tools/ox
+Added `tools/ox/` (OpenCode free-model wrapper: `.collab/` protocol, secret-file guard, per-attempt timeout, ranked fallback from `models.txt`; `bench.py` ran 12 free models x 3 synthetic tasks, 34/36 pass, default nemotron-3.5-super-vl-free) and a P-Free row in the t3-routing table (all copies + LOG + FA guide). Free providers receive task data: non-sensitive work only. Open: re-check pass/fallback rate after ~30 P-Free delegations; ox is not covered by CI.

@@ -85,6 +85,10 @@ For named tasks, write specs in `.collab/$CLAUDE_CODE_SESSION_ID/tasks/<name>.md
 
 Write runs commit changed files locally after optional checks; review the result before pushing. `-n` is the default, `-r` avoids commits, and `-p` explicitly enables pull/rebase and push and is intended only for Claude after review. Secret-pattern checks are heuristic. Never put secrets in prompts or specs. See [the Persian cx guide](docs/fa/cx.md).
 
+## Free-model hand-offs: tools/ox
+
+`tools/ox/ox` mirrors `cx` for OpenCode's free models: same `.collab/` task/result protocol, a secret-file guard, a per-attempt timeout and a ranked fallback chain ([models.txt](tools/ox/models.txt), benchmark in [BENCH.md](tools/ox/BENCH.md)). Free providers receive task data, so use it only for non-sensitive mechanical work with a runnable check. It needs Python 3 and an installed `opencode`; it never commits or pushes. See [tools/ox/README.md](tools/ox/README.md). The [routing table](t3-routing/README.md) has a matching P-Free row.
+
 ## Credits and contributors
 
 Built with Claude (Anthropic) and OpenAI Codex as AI coding collaborators. The maintainer reviews and owns final decisions.
@@ -132,6 +136,10 @@ Built with Claude (Anthropic) and OpenAI Codex as AI coding collaborators. The m
 با دستورهای بخش tools/cx، ابزار را در PATH قرار دهید و از Bash در Claude Code فراخوانی کنید تا شناسهٔ نشست در محیط موجود باشد. مشخصات کارها در مسیر `.collab/$CLAUDE_CODE_SESSION_ID/tasks/<name>.md` و نتیجهٔ حداکثر ۱۵خطی در `results/<name>.md` قرار می‌گیرد. گزینهٔ `-s -t name` ادامهٔ کار، `-m` انتخاب مدل و `-e` میزان استدلال است. متغیر `CX_MODELS` فهرست مجاز مدل‌ها را با مقادیر جداشده با فاصله جایگزین می‌کند؛ مقدار پیش‌فرض همان فهرست بخش انگلیسی است.
 
 حالت نوشتن پس از بررسی اختیاری، تغییرات را محلی کامیت می‌کند؛ پیش از پوش بازبینی کنید. `-n` پیش‌فرض است، `-r` حالت فقط‌خواندنی و `-p` فعال‌کنندهٔ صریح pull/rebase و push برای استفادهٔ Claude پس از بازبینی است. تشخیص اطلاعات محرمانه قطعی نیست؛ آن‌ها را وارد مشخصات یا پرامپت نکنید. [راهنمای کامل cx](docs/fa/cx.md).
+
+### واگذاری به مدل‌های رایگان (ox)
+
+`tools/ox/ox` مثل `cx` ولی برای مدل‌های رایگان OpenCode است: همان پروتکل `.collab/`، محافظ فایل‌های محرمانه، تایم‌اوت برای هر تلاش و زنجیرهٔ fallback رتبه‌بندی‌شده (بنچمارک در `tools/ox/BENCH.md`). ارائه‌دهندهٔ رایگان داده را می‌بیند؛ فقط برای کار مکانیکی غیرحساس با بررسی قابل اجرا استفاده کنید. commit یا push نمی‌کند.
 
 ### سازندگان و مشارکت‌کنندگان
 
