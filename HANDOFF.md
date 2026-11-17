@@ -32,3 +32,6 @@ Release confirmed: v0.5.2 published; CI and Release workflows succeeded. Validat
 
 ## 2026-11-17 — P-Free routing + tools/ox
 Added `tools/ox/` (OpenCode free-model wrapper: `.collab/` protocol, secret-file guard, per-attempt timeout, ranked fallback from `models.txt`; `bench.py` ran 12 free models x 3 synthetic tasks, 34/36 pass, default nemotron-3.5-super-vl-free) and a P-Free row in the t3-routing table (all copies + LOG + FA guide). Free providers receive task data: non-sensitive work only. Open: re-check pass/fallback rate after ~30 P-Free delegations; ox is not covered by CI.
+
+## 2026-11-17 — v0.6.0
+Released v0.6.0 (agent-board OpenCode session discovery, 24 h idle / 6 h usage staleness, tools/ox, P-Free routing row). Main CI had been red since 91e3343 because three usage tests still assumed the 30-minute staleness window and one session-order test expected severity to reorder live lists; tests now match the code (stable order). Assumption to confirm with the owner: severity intentionally no longer reorders live lists. Release workflow succeeded; local deployment matches the repo.
