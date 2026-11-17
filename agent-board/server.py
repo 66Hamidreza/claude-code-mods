@@ -40,6 +40,10 @@ _win_spec = importlib.util.spec_from_file_location('win_t3', MOD_ROOT / 'hooks/w
 WIN_T3 = importlib.util.module_from_spec(_win_spec)
 _win_spec.loader.exec_module(WIN_T3)
 WIN_SCANNER = WIN_T3.WindowsT3Scanner()
+_oc_spec = importlib.util.spec_from_file_location('opencode_standalone', MOD_ROOT / 'hooks/opencode_standalone.py')
+OPENCODE = importlib.util.module_from_spec(_oc_spec)
+_oc_spec.loader.exec_module(OPENCODE)
+OPENCODE_SCANNER = OPENCODE.Scanner(HOME)
 REAL_HOME = HOME
 CODEX_LOCK = threading.Lock()
 CODEX_CACHE = {'at': 0.0, 'body': b'[]'}
@@ -79,7 +83,11 @@ def sessions_body(directory, now_s=None, windows=False):
     except (OSError, ValueError, TypeError):
         codex = []
     # Only the HTTP route scans the Windows-side T3 profile; direct callers (tests) stay hermetic.
-    for snapshot in codex + (WIN_SCANNER.scan(int(now_s * 1000)) if windows else []):
+    try:
+        opencode = OPENCODE_SCANNER.scan(now_s) if windows else []
+    except Exception:
+        opencode = []
+    for snapshot in codex + opencode + (WIN_SCANNER.scan(int(now_s * 1000)) if windows else []):
         sid = snapshot['sessionId']
         if sid not in sessions or snapshot.get('updatedAt', 0) > sessions[sid].get('updatedAt', 0):
             sessions[sid] = snapshot
@@ -165,7 +173,7 @@ def window(wid, label, used, resets_at, now_s, as_of=None, minutes=None, keep_la
     if isinstance(resets_at, (int, float)) and resets_at > 10_000_000_000:
         resets_at /= 1000
     expired = resets_at is not None and resets_at <= now_s
-    stale = expired or not finite_number(as_of) or as_of > now_s * 1000 or now_s * 1000 - as_of >= 1800000
+    stale = expired or not finite_number(as_of) or as_of > now_s * 1000 or now_s * 1000 - as_of >= 21600000
     return {'id': wid, 'label': label if keep_label else window_label(minutes, label), 'usedPct': round(used, 1),
             'resetsAt': resets_at, 'stale': stale, 'asOf': as_of, 'windowMinutes': minutes,
             'resetAt': None, 'rolledOver': False, 'resetPending': expired}
@@ -175,7 +183,7 @@ CLAUDE_VERSION = {'value': None}
 CLAUDE_API = {'at': 0.0, 'ok_at': 0.0, 'data': None}
 CLAUDE_API_LOCK = threading.Lock()
 CLAUDE_API_TTL = 60
-CLAUDE_API_FRESH = 1800  # a cached API answer older than this is no better than the T3 logs
+CLAUDE_API_FRESH = 21600  # last good API answer stays authoritative for 6h (idle machines must not grey the cards)
 USAGE_URL = 'https://api.anthropic.com/api/oauth/usage?cedar_ember=1&skip_spend=1'
 RESET_URL = 'https://api.anthropic.com/api/organizations/%s/reset_rate_limits'
 
@@ -803,6 +811,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return
         super().do_GET()
 
+    def end_headers(self):
+        # Static page/JS must never be heuristically cached, or a fixed UI keeps showing the old one.
+        if not any(h.lower().startswith(b'cache-control') for h in getattr(self, '_headers_buffer', [])):
+            self.send_header('Cache-Control', 'no-cache')
+        super().end_headers()
+
     def log_message(self, *args):
         pass
 
@@ -815,4 +829,6 @@ if __name__ == '__main__':
     os.makedirs(os.path.join(args.directory, 'sessions'), exist_ok=True)
     handler = lambda *a, **k: Handler(*a, directory=args.directory, **k)
     threading.Thread(target=sample_usage_forever, daemon=True).start()
+    if HOME == REAL_HOME:
+        threading.Thread(target=WIN_SCANNER.scan, daemon=True).start()  # warm the slow Windows DB copy
     http.server.ThreadingHTTPServer(('127.0.0.1', args.port), handler).serve_forever()

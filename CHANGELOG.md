@@ -4,6 +4,9 @@ All notable changes are documented here using [Keep a Changelog](https://keepach
 
 ## [Unreleased]
 
+- Add read-only OpenCode session discovery, including nested child sessions.
+- Keep idle sessions out of Ended for 24 hours and mark usage readings stale after 6 hours.
+
 ## [0.5.2] - 2026-11-17
 
 ### Fixed

@@ -516,6 +516,9 @@ h1 { flex-direction: row; align-items: baseline; gap: 4px 12px; }
   .legend > span:last-child { flex-basis: auto; max-width: none; }
   .wrap { padding-block-start: 10px; gap: 10px; }
 }
+/* ===== Lean session card: title, state, agents only ===== */
+.sess .tools, .sess .pulse, .sess .feedcol, .sess .session-summary, .sess-head .cwd, .sess-head .chip-agents { display: none !important; }
+.sess .body { grid-template-columns: minmax(0, 1fr) !important; border-top: 0; }
 </style>
 </head>
 <body>
@@ -599,7 +602,7 @@ function sessionInfo(s, now) {
   var agents = nodes(s), run = agents.filter(isRunning).length, age = Math.max(0, now - stamp(s));
   var blocked = agents.some(function (a) { return a.status !== 'done' && a.status !== 'failed' && (a.phase === 'waiting-approval' || a.phase === 'waiting-input' || a.health === 'approval'); });
   var child = !!(s.t3 && s.t3.parentThreadId), lastWork = agents.reduce(function (m, a) { return Math.max(m, finiteNumber(a.activityAt) ? a.activityAt : 0, finiteNumber(a.endedAt) ? a.endedAt : 0); }, 0);
-  var ended = !!s.isEnded || (!run && !blocked && (age > 600000 || child && lastWork > 0 && now - lastWork > 120000)), silent = !ended && run > 0 && age > SILENT;
+  var ended = !!s.isEnded || (!run && !blocked && (age > 86400000 || child && lastWork > 0 && now - lastWork > 120000)), silent = !ended && run > 0 && age > SILENT;
   var current = [];
   if (!ended) {
     agents.forEach(function (a) {
@@ -625,7 +628,7 @@ function sessionInfo(s, now) {
   return { agents: agents, run: run, ended: ended, silent: silent, age: age, issues: issues, currentIssues: current, warn: agents.filter(flagged), fail: agents.filter(function (a) { return a.status === 'failed'; }).length, codex: agents.filter(function (a) { return a.kind === 'codex'; }), sev: issues.length ? 3 : ended ? 0 : run ? 2 : 1 };
 }
 function stateChip(s, info) {
-  if (info.ended) return chip('', 'Ended', 'Session explicitly ended, or has no running agents and has been quiet for 10 minutes (2 minutes for a delegated child)');
+  if (info.ended) return chip('', 'Ended', 'Session explicitly ended, or has no running agents and has been quiet for 24 hours (2 minutes for a delegated child)');
   if (info.silent) return chip('fail', 'No heartbeat', 'Disconnected or no heartbeat; running work is retained');
   var main = info.agents.find(function (a) { return a.kind === 'main' || a.id === 'main'; });
   var phase = main && main.phase;
@@ -683,7 +686,7 @@ function orderedSessions(live, now, mode) {
   if (!changedMode) live.filter(function (s) { return !ranks.has(s.sessionId); }).sort(function (a, b) { return mode === 'name' ? sessionName(a).localeCompare(sessionName(b)) : stamp(b) - stamp(a); }).forEach(function (s) { ranks.set(s.sessionId, ranks.size); });
   var sorted = live.slice().sort(function (a, b) {
     var pa = pinned[a.sessionId] ? 1 : 0, pb = pinned[b.sessionId] ? 1 : 0; if (pa !== pb) return pb - pa;
-    if (mode === 'sev') { var severity = sortState.get(b.sessionId).severity - sortState.get(a.sessionId).severity; if (severity) return severity; }
+    if (mode === 'sev' && changedMode) { var severity = sortState.get(b.sessionId).severity - sortState.get(a.sessionId).severity; if (severity) return severity; }
     if (!changedMode && ranks.has(a.sessionId) && ranks.has(b.sessionId)) return ranks.get(a.sessionId) - ranks.get(b.sessionId);
     if (mode === 'name') return sessionName(a).localeCompare(sessionName(b));
     return stamp(b) - stamp(a) || a.sessionId.localeCompare(b.sessionId);
@@ -697,7 +700,7 @@ function windowReset(w) {
 }
 function windowStale(w, data, now) {
   var at = windowReset(w), seen = validDate(w.asOf) ? w.asOf : data && data.asOf;
-  return !!(w.stale || data && data.stale || !validDate(seen) || seen > now || now - seen >= 1800000 || at !== null && at <= now);
+  return !!(w.stale || data && data.stale || !validDate(seen) || seen > now || now - seen >= 21600000 || at !== null && at <= now);
 }
 function windowLabel(w) { return w.label || (w.id === 'five_hour' ? '5-hour window' : w.id === 'seven_day' ? '7-day window' : w.id ? String(w.id).replace(/_/g, ' ') : 'Reported window'); }
 function clock24(at) { return new Date(at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }); }
@@ -811,7 +814,7 @@ function windowRow(provider, data, w, index, events, now) {
     + (paceText ? '<span class="uw-pace' + (left < even - 5 ? ' fast' : '') + '">' + paceText + '</span>' : '')
     + (passed ? '<span class="reset-note">Scheduled reset passed · awaiting a new usage reading</span>' : projection(provider, w, index, left))
     + (validDate(w.asOf) && w.asOf !== data.asOf ? '<span class="usage-asof" data-asof="' + w.asOf + '"></span>' : '');
-  return '<div class="uw' + (left === null ? ' unknown' : '') + (old && left !== null ? ' last-known' : '') + '"' + (!old ? ' data-fresh-until="' + Math.min(at === null ? Infinity : at, (w.asOf || data.asOf) + 1800000) + '"' : '')
+  return '<div class="uw' + (left === null ? ' unknown' : '') + (old && left !== null ? ' last-known' : '') + '"' + (!old ? ' data-fresh-until="' + Math.min(at === null ? Infinity : at, (w.asOf || data.asOf) + 21600000) + '"' : '')
     + ' style="--gauge:' + color + ';--left:' + (left === null ? 0 : left) + '%' + (even === null ? '' : ';--even:' + even + '%') + '">'
     + '<div class="uw-name"><span class="window-label">' + esc(label) + '</span>' + (latest && latest.kind === 'early' ? '<span class="early-reset" title="' + esc(resetDescription(latest)) + '">Early reset</span>' : '') + '</div>'
     + '<div class="uw-pct">' + (left === null ? 'Unknown' : String(left) + '%') + '<small>' + (old ? 'awaiting fresh reading' : left === null ? 'no reading yet' : 'left') + '</small></div>'
@@ -972,7 +975,7 @@ function tickUsage(now) {
     var at = Number(el.dataset.exp); textIfChanged(el, at <= now ? 'expired' : 'expires in ' + relativeTime(at - now));
   });
   document.querySelectorAll('[data-asof]').forEach(function (el) {
-    var hasAt = el.dataset.asof !== '', at = Number(el.dataset.asof), stale = hasAt && now - at > 1800000;
+    var hasAt = el.dataset.asof !== '', at = Number(el.dataset.asof), stale = hasAt && now - at > 21600000;
     var tooltip = 'Claude data refreshes only while a T3 Claude session runs. Codex data comes from the latest timestamped usage observation across recent Codex logs.';
     var text = hasAt ? 'Last usage reading ' + (now - at > 86400000 ? datedClock(at, now) : clock24(at)) + ' · ' + Math.floor(Math.max(0, now - at) / 3600000) + 'h ' + Math.floor(Math.max(0, now - at) / 60000) % 60 + 'm ago' : 'Last usage reading unavailable';
     setHtml(el, esc(text) + (stale ? ' <span class="reading-old" title="' + tooltip + '">old reading</span>' : '')); el.title = tooltip;
@@ -1122,7 +1125,7 @@ function parts(s, info, best, now, expanded) {
   var head = '<span class="title" dir="auto"><span class="chev" aria-hidden="true">▾</span>' + esc(sessionName(s)) + '</span><span class="cwd" dir="auto">' + esc(s.cwd || 'Folder unavailable') + '</span><span class="chips">' + stateChip(s, info) + adviceChip(s, now) + parent + peerBadges(s, now) +
     (info.run && !info.ended ? chip('run', info.run + ' running', 'Includes the main agent and all running children') : '') +
     (info.issues.length ? chip('fail', info.issues.length + ' need attention', 'Unacknowledged approval, stalled, looping, recent failure, or heartbeat issues') : '') +
-    chip('', agents.length + ' agents', 'All reported nodes, including the main agent') + (muted[s.sessionId] ? chip('', 'Muted', 'Notifications are muted for this session') : '') + '</span>';
+    '' + (muted[s.sessionId] ? chip('', 'Muted', 'Notifications are muted for this session') : '') + '</span>';
   var summary = s.summary || {}, count = function (key, fallback) { return finiteNumber(summary[key]) ? summary[key] : fallback; };
   var lastActivity = summary.lastActivityAt || Math.max.apply(null, agents.map(function (a) { return a.activityAt || 0; }).concat([stamp(s)]));
   var strip = '<span title="Running count includes the main agent"><b>' + count('running', info.run) + '</b> running</span><span title="Agents waiting for a person, approval, or children"><b>' + count('waiting', agents.filter(function (a) { return String(a.phase || '').startsWith('waiting-'); }).length) + '</b> waiting</span><span title="Failed nodes, including acknowledged failures"><b>' + count('failed', info.fail) + '</b> failed</span><span title="Backend health flags, independent of acknowledgement"><b>' + count('flagged', info.warn.length) + '</b> flagged</span><span title="Most recent reported activity">Activity ' + dur(now - lastActivity) + ' ago</span>';
